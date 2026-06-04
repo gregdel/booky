@@ -1,0 +1,4 @@
+caldav:
+  user: user
+  pass: super_secret_pass
+  url: https://my.nextcloud.site/remote.php/dav
