@@ -82,6 +82,18 @@ func TestListBookings(t *testing.T) {
 	}
 }
 
+func TestListBookingsReturnsEmptyArray(t *testing.T) {
+	handler := New(&fakeStore{}, testAssets())
+
+	resp := request(handler, http.MethodGet, "/api/bookings?start=2026-07-01&end=2026-08-01", nil)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", resp.Code, resp.Body.String())
+	}
+	if strings.TrimSpace(resp.Body.String()) != "[]" {
+		t.Fatalf("body = %q, want []", resp.Body.String())
+	}
+}
+
 func TestListBookingsValidatesQuery(t *testing.T) {
 	store := &fakeStore{}
 	handler := New(store, testAssets())

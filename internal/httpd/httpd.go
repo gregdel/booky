@@ -103,6 +103,9 @@ func (s *Server) listBookings(w http.ResponseWriter, r *http.Request) {
 		writeMappedError(w, err)
 		return
 	}
+	if bookings == nil {
+		bookings = []booking.Booking{}
+	}
 	writeJSON(w, http.StatusOK, bookings)
 }
 
