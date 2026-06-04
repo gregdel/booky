@@ -1,0 +1,263 @@
+:root {
+  color-scheme: light;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #1e252d;
+  background: #f5f7f8;
+  --panel: #ffffff;
+  --border: #d8dee5;
+  --muted: #667482;
+  --accent: #1f7a64;
+  --accent-dark: #145b4a;
+  --danger: #b83232;
+  --focus: #2f80ed;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: #f5f7f8;
+}
+
+.app-shell {
+  width: min(1180px, calc(100vw - 32px));
+  margin: 0 auto;
+  padding: 24px 0 32px;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+h1 {
+  margin: 0 0 4px;
+  font-size: 28px;
+  line-height: 1.1;
+  font-weight: 700;
+}
+
+p {
+  margin: 0;
+  color: var(--muted);
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+button {
+  min-height: 38px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  color: #1e252d;
+  padding: 0 14px;
+  cursor: pointer;
+}
+
+button:hover {
+  border-color: #aeb8c3;
+}
+
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+#add-booking {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--accent);
+  color: #ffffff;
+  border-color: var(--accent);
+  font-weight: 650;
+}
+
+#add-booking:hover {
+  background: var(--accent-dark);
+  border-color: var(--accent-dark);
+}
+
+#status[data-state="error"],
+.form-error {
+  color: var(--danger);
+}
+
+#calendar {
+  min-height: 680px;
+  padding: 16px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.fc {
+  --fc-border-color: #d8dee5;
+  --fc-button-bg-color: #ffffff;
+  --fc-button-border-color: #c6ced7;
+  --fc-button-text-color: #1e252d;
+  --fc-button-hover-bg-color: #edf1f4;
+  --fc-button-hover-border-color: #aeb8c3;
+  --fc-button-active-bg-color: #1f7a64;
+  --fc-button-active-border-color: #1f7a64;
+  --fc-today-bg-color: #e7f3ef;
+  --fc-event-bg-color: #1f7a64;
+  --fc-event-border-color: #1f7a64;
+  --fc-event-text-color: #ffffff;
+  font-size: 14px;
+}
+
+.fc .fc-toolbar-title {
+  font-size: 20px;
+}
+
+.fc .fc-button {
+  border-radius: 6px;
+  box-shadow: none;
+}
+
+.fc .fc-daygrid-event {
+  border-radius: 4px;
+}
+
+dialog {
+  width: min(520px, calc(100vw - 24px));
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0;
+  color: #1e252d;
+}
+
+dialog::backdrop {
+  background: rgb(20 30 40 / 45%);
+}
+
+#booking-form {
+  display: grid;
+  gap: 16px;
+  padding: 20px;
+}
+
+.dialog-header,
+.dialog-actions,
+.field-row {
+  display: grid;
+  gap: 12px;
+}
+
+.dialog-header {
+  grid-template-columns: 1fr auto;
+  align-items: center;
+}
+
+.dialog-header h2 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.icon-button {
+  width: 34px;
+  min-height: 34px;
+  padding: 0;
+  line-height: 1;
+}
+
+label {
+  display: grid;
+  gap: 6px;
+  color: #36424e;
+  font-size: 14px;
+  font-weight: 650;
+}
+
+input,
+textarea {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 9px 10px;
+  color: #1e252d;
+  background: #ffffff;
+  font-weight: 400;
+}
+
+textarea {
+  resize: vertical;
+}
+
+.field-row {
+  grid-template-columns: 1fr 1fr;
+}
+
+.dialog-actions {
+  grid-template-columns: auto 1fr auto auto;
+  align-items: center;
+}
+
+.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #ffffff;
+  font-weight: 650;
+}
+
+.primary:hover {
+  background: var(--accent-dark);
+  border-color: var(--accent-dark);
+}
+
+.danger {
+  color: var(--danger);
+}
+
+.form-error:empty {
+  display: none;
+}
+
+@media (max-width: 720px) {
+  .app-shell {
+    width: min(100vw - 16px, 720px);
+    padding-top: 12px;
+  }
+
+  .app-header {
+    align-items: flex-start;
+  }
+
+  #calendar {
+    min-height: 560px;
+    padding: 8px;
+  }
+
+  .fc .fc-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .field-row,
+  .dialog-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .dialog-actions span {
+    display: none;
+  }
+}

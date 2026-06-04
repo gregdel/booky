@@ -1,0 +1,12 @@
+{
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build:web": "rm -rf web/dist && mkdir -p web/dist && cp web/src/index.html web/dist/index.html && cp web/src/style.css web/dist/style.css && bun build web/src/app.ts --target browser --format esm --minify --outfile web/dist/app.js"
+  },
+  "dependencies": {
+    "fullcalendar": "6.1.20"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}

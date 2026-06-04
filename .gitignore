@@ -1,1 +1,5 @@
 config.yaml
+plan.md
+node_modules/
+web/dist/
+bin/

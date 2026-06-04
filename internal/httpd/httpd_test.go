@@ -37,6 +37,24 @@ func TestHealthAndStatic(t *testing.T) {
 			t.Fatalf("%s header missing", header)
 		}
 	}
+	csp := resp.Header().Get("Content-Security-Policy")
+	for _, want := range []string{"style-src 'self' 'unsafe-inline'", "font-src 'self' data:"} {
+		if !strings.Contains(csp, want) {
+			t.Fatalf("CSP = %q, want %q", csp, want)
+		}
+	}
+
+	for _, path := range []string{"/app.js", "/style.css"} {
+		t.Run(path, func(t *testing.T) {
+			resp := request(handler, http.MethodGet, path, nil)
+			if resp.Code != http.StatusOK {
+				t.Fatalf("%s status = %d", path, resp.Code)
+			}
+			if resp.Body.Len() == 0 {
+				t.Fatalf("%s returned empty body", path)
+			}
+		})
+	}
 
 	resp = request(handler, http.MethodGet, "/missing.js", nil)
 	if resp.Code != http.StatusNotFound {

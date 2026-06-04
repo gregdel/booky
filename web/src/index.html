@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>booky</title>
+    <link rel="stylesheet" href="/style.css">
+    <script type="module" src="/app.js"></script>
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="app-header">
+        <div>
+          <h1>booky</h1>
+          <p id="status" role="status">Loading bookings</p>
+        </div>
+        <button id="add-booking" type="button">
+          <span aria-hidden="true">+</span>
+          <span>Add</span>
+        </button>
+      </header>
+
+      <section id="calendar" aria-label="Bookings calendar"></section>
+    </main>
+
+    <dialog id="booking-dialog">
+      <form id="booking-form" method="dialog">
+        <header class="dialog-header">
+          <h2 id="dialog-title">Booking</h2>
+          <button id="close-dialog" class="icon-button" type="button" aria-label="Close">x</button>
+        </header>
+
+        <label>
+          Name
+          <input id="booking-name" name="name" type="text" maxlength="120" required autocomplete="name">
+        </label>
+
+        <div class="field-row">
+          <label>
+            Start
+            <input id="booking-start" name="start" type="date" required>
+          </label>
+          <label>
+            End
+            <input id="booking-end" name="end" type="date" required>
+          </label>
+        </div>
+
+        <label>
+          Note
+          <textarea id="booking-note" name="note" rows="4" maxlength="1000"></textarea>
+        </label>
+
+        <p id="form-error" class="form-error" role="alert"></p>
+
+        <footer class="dialog-actions">
+          <button id="delete-booking" class="danger" type="button">Delete</button>
+          <span></span>
+          <button id="cancel-booking" type="button">Cancel</button>
+          <button id="save-booking" class="primary" type="submit">Save</button>
+        </footer>
+      </form>
+    </dialog>
+  </body>
+</html>

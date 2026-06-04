@@ -24,10 +24,16 @@ Keep `config.yaml` private. It contains the Nextcloud app password and is ignore
 
 ## Development
 
+Install frontend dependencies and build embedded assets:
+
+```sh
+make web
+```
+
 Start the server:
 
 ```sh
-go run ./cmd/booky -config config-example.yaml
+make run
 ```
 
 Then open `http://localhost:8080/`.
@@ -35,5 +41,11 @@ Then open `http://localhost:8080/`.
 Run tests:
 
 ```sh
-go test ./...
+make test
+```
+
+Build a static binary:
+
+```sh
+make build
 ```
