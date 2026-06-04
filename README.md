@@ -1,12 +1,37 @@
 # booky
 
-booky is a tiny self-hosted vacation-house booking app backed by one configured Nextcloud CalDAV calendar.
+booky is a tiny self-hosted booking app for a vacation house. It stores bookings as all-day events in one configured Nextcloud CalDAV calendar.
 
-The app is public and unauthenticated. It does not provide app-level auth, accounts, sessions, or access-control rules. If access should be restricted, put authentication in front of booky with deployment infrastructure such as a reverse proxy.
+The server is written in Go. The browser app is TypeScript built with Bun, then embedded into the final Go binary. There is no database: Nextcloud Calendar is the source of truth.
+
+booky is public and unauthenticated. It does not provide app-level auth, accounts, sessions, or access-control rules. If access should be restricted, put authentication in front of booky at the reverse proxy.
+
+## Requirements
+
+- Go
+- Bun
+- A Nextcloud calendar
+- A Nextcloud app password for the user that owns or can edit that calendar
+
+## Nextcloud Setup
+
+Create or choose a dedicated calendar in Nextcloud Calendar. Then copy the exact CalDAV calendar collection URL.
+
+The URL must point to the calendar collection itself and must end with `/`, for example:
+
+```text
+https://cloud.example.com/remote.php/dav/calendars/family-house/vacation-house/
+```
+
+Use a Nextcloud app password instead of your account password.
 
 ## Configuration
 
-booky loads `config.yaml` by default. Use `-config <path>` to load another file.
+Copy the example config and edit it:
+
+```sh
+cp config-example.yaml config.yaml
+```
 
 ```yaml
 listen_addr: ":8080"
@@ -18,19 +43,17 @@ caldav:
   pass: "app-password"
 ```
 
-`caldav.url` must be the exact calendar collection URL and must end with `/`.
-
-Keep `config.yaml` private. It contains the Nextcloud app password and is ignored by git.
+`config.yaml` contains credentials and is ignored by git.
 
 ## Development
 
-Install frontend dependencies and build embedded assets:
+Build the embedded frontend assets:
 
 ```sh
 make web
 ```
 
-Start the server:
+Run the app:
 
 ```sh
 make run
@@ -44,8 +67,90 @@ Run tests:
 make test
 ```
 
-Build a static binary:
+Run the release checks:
 
 ```sh
-make build
+make release-check
 ```
+
+## Build
+
+Build a Linux static binary:
+
+```sh
+CGO_ENABLED=0 make build
+```
+
+The binary is written to:
+
+```text
+bin/booky
+```
+
+Run it with:
+
+```sh
+bin/booky -config config.yaml
+```
+
+The frontend must be built before the Go binary is built. The `make build` target does this automatically.
+
+## nginx Reverse Proxy
+
+Example nginx site:
+
+```nginx
+server {
+    listen 443 ssl http2;
+    server_name booky.example.com;
+
+    ssl_certificate /etc/letsencrypt/live/booky.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/booky.example.com/privkey.pem;
+
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+If you need authentication, add it in nginx or another upstream access-control layer. Do not expose `config.yaml`.
+
+## Backups
+
+booky creates no database files. Back up the configured Nextcloud calendar using your normal Nextcloud backup process, or export the calendar from Nextcloud Calendar.
+
+## Limitations
+
+- Public and unauthenticated by design
+- One configured CalDAV calendar
+- No CalDAV discovery
+- No recurring-event support
+- Overlapping bookings are allowed
+- No conflict prevention beyond CalDAV ETag handling for updates and deletes
+- No local database or offline mode
+
+## Release Checklist
+
+Before publishing or deploying:
+
+```sh
+make release-check
+```
+
+Then test against a real ignored `config.yaml`:
+
+1. Start `bin/booky -config config.yaml`.
+2. Open the public root URL.
+3. Create a temporary booking named `booky release test`.
+4. Confirm it appears in Nextcloud Calendar.
+5. Edit the name or note.
+6. Drag it to another date.
+7. Resize it.
+8. Delete it.
+9. Confirm it is gone from Nextcloud Calendar.
+10. Confirm browser devtools do not show Nextcloud credentials.
+11. Confirm no database files were created.
