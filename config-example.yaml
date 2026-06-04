@@ -1,4 +1,7 @@
+listen_addr: ":8080"
+app_title: "Vacation House"
+
 caldav:
-  user: user
-  pass: super_secret_pass
-  url: https://my.nextcloud.site/remote.php/dav
+  url: "https://cloud.example.com/remote.php/dav/calendars/family-house/vacation-house/"
+  user: "family-house"
+  pass: "app-password"
