@@ -50,13 +50,13 @@ caldav:
 Build the embedded frontend assets:
 
 ```sh
-make web
+sh scripts/booky.sh web
 ```
 
 Run the app:
 
 ```sh
-make run
+sh scripts/booky.sh run
 ```
 
 Then open `http://localhost:8080/`.
@@ -64,13 +64,13 @@ Then open `http://localhost:8080/`.
 Run tests:
 
 ```sh
-make test
+sh scripts/booky.sh test
 ```
 
 Run the release checks:
 
 ```sh
-make release-check
+sh scripts/booky.sh release-check
 ```
 
 ## Build
@@ -78,7 +78,7 @@ make release-check
 Build a Linux static binary:
 
 ```sh
-CGO_ENABLED=0 make build
+sh scripts/booky.sh build
 ```
 
 The binary is written to:
@@ -93,7 +93,7 @@ Run it with:
 bin/booky -config config.yaml
 ```
 
-The frontend must be built before the Go binary is built. The `make build` target does this automatically.
+The frontend must be built before the Go binary is built. The `build` command does this automatically.
 
 ## nginx Reverse Proxy
 
@@ -138,7 +138,7 @@ booky creates no database files. Back up the configured Nextcloud calendar using
 Before publishing or deploying:
 
 ```sh
-make release-check
+sh scripts/booky.sh release-check
 ```
 
 Then test against a real ignored `config.yaml`:
