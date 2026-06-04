@@ -24,11 +24,13 @@ Keep `config.yaml` private. It contains the Nextcloud app password and is ignore
 
 ## Development
 
-Run the config smoke check:
+Start the server:
 
 ```sh
 go run ./cmd/booky -config config-example.yaml
 ```
+
+Then open `http://localhost:8080/`.
 
 Run tests:
 
