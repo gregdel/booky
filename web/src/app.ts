@@ -188,7 +188,6 @@ async function saveBooking(): Promise<void> {
     });
     closeDialog();
     setStatus("Booking saved");
-    upsertEvent(saved);
     calendar.refetchEvents();
   } catch (error) {
     formError.textContent = errorMessage(error);
@@ -258,18 +257,6 @@ function updateEvent(event: BookingEvent, booking: Booking): void {
   event.setExtendedProp("href", booking.href || "");
   event.setExtendedProp("etag", booking.etag || "");
   event.setExtendedProp("note", booking.note || "");
-}
-
-function upsertEvent(booking: Booking): void {
-  if (!booking.uid) {
-    return;
-  }
-  const existing = calendar.getEventById(booking.uid) as BookingEvent | null;
-  if (existing) {
-    updateEvent(existing, booking);
-    return;
-  }
-  calendar.addEvent(bookingToEvent(booking));
 }
 
 async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
