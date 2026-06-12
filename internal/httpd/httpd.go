@@ -27,11 +27,16 @@ type Server struct {
 	store      Store
 	assets     fs.FS
 	publicPath string
+	appTitle   string
 }
 
-func New(store Store, assets fs.FS, publicPath string) http.Handler {
+func New(store Store, assets fs.FS, publicPath, appTitle string) http.Handler {
 	publicPath = cleanPublicPath(publicPath)
-	s := &Server{store: store, assets: assets, publicPath: publicPath}
+	appTitle = strings.TrimSpace(appTitle)
+	if appTitle == "" {
+		appTitle = "booky"
+	}
+	s := &Server{store: store, assets: assets, publicPath: publicPath, appTitle: appTitle}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/health", s.handleHealth)
@@ -83,6 +88,10 @@ func (s *Server) handleAsset(w http.ResponseWriter, r *http.Request) {
 		s.handleIndex(w, r)
 		return
 	}
+	if r.URL.Path == "/manifest.webmanifest" {
+		s.handleManifest(w, r)
+		return
+	}
 	http.FileServer(http.FS(s.assets)).ServeHTTP(w, r)
 }
 
@@ -94,8 +103,50 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	}
 
 	body := strings.ReplaceAll(string(index), "{{PUBLIC_PATH}}", html.EscapeString(s.publicPath))
+	body = strings.ReplaceAll(body, "{{APP_TITLE}}", html.EscapeString(s.appTitle))
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = io.WriteString(w, body)
+}
+
+func (s *Server) handleManifest(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		methodNotAllowed(w, http.MethodGet, http.MethodHead)
+		return
+	}
+
+	publicPath := s.publicPath
+	startURL := publicPath
+	if startURL == "" {
+		startURL = "/"
+	}
+	manifest := map[string]any{
+		"name":             s.appTitle,
+		"short_name":       s.appTitle,
+		"id":               startURL,
+		"start_url":        startURL,
+		"scope":            startURL,
+		"display":          "standalone",
+		"theme_color":      "#4f6f8f",
+		"background_color": "#f6f4ef",
+		"icons": []map[string]string{
+			{
+				"src":   publicPath + "/icon-192.png",
+				"sizes": "192x192",
+				"type":  "image/png",
+			},
+			{
+				"src":   publicPath + "/icon-512.png",
+				"sizes": "512x512",
+				"type":  "image/png",
+			},
+		},
+	}
+
+	w.Header().Set("Content-Type", "application/manifest+json")
+	if r.Method == http.MethodHead {
+		return
+	}
+	_ = json.NewEncoder(w).Encode(manifest)
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {

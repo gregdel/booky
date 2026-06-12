@@ -10,6 +10,7 @@ booky is public and unauthenticated. It does not provide app-level auth, account
 
 - Go
 - Bun
+- `rsvg-convert` from librsvg, used to generate installable app PNG icons at build time
 - A Nextcloud calendar
 - A Nextcloud app password for the user that owns or can edit that calendar
 

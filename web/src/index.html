@@ -3,7 +3,14 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>booky</title>
+    <meta name="theme-color" content="#4f6f8f">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="{{APP_TITLE}}">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <title>{{APP_TITLE}}</title>
+    <link rel="manifest" href="{{PUBLIC_PATH}}/manifest.webmanifest">
+    <link rel="icon" type="image/svg+xml" href="{{PUBLIC_PATH}}/icon.svg">
+    <link rel="apple-touch-icon" href="{{PUBLIC_PATH}}/apple-touch-icon.png">
     <link rel="stylesheet" href="{{PUBLIC_PATH}}/style.css">
     <script type="module" src="{{PUBLIC_PATH}}/app.js"></script>
   </head>
@@ -11,7 +18,7 @@
     <main class="app-shell">
       <header class="app-header">
         <div>
-          <h1>booky</h1>
+          <h1>{{APP_TITLE}}</h1>
           <p id="status" role="status">Loading bookings</p>
         </div>
         <button id="add-booking" type="button">

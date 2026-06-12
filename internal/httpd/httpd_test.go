@@ -17,7 +17,7 @@ import (
 )
 
 func TestHealthAndStatic(t *testing.T) {
-	handler := New(&fakeStore{}, testAssets(), "")
+	handler := New(&fakeStore{}, testAssets(), "", "Vacation House")
 
 	resp := request(handler, http.MethodGet, "/api/health", nil)
 	if resp.Code != http.StatusOK {
@@ -29,11 +29,22 @@ func TestHealthAndStatic(t *testing.T) {
 	if resp.Code != http.StatusOK {
 		t.Fatalf("static status = %d", resp.Code)
 	}
-	if !strings.Contains(resp.Body.String(), "booky") {
+	if !strings.Contains(resp.Body.String(), "Vacation House") {
 		t.Fatalf("static body = %q", resp.Body.String())
 	}
 	if !strings.Contains(resp.Body.String(), `href="/style.css"`) || !strings.Contains(resp.Body.String(), `src="/app.js"`) {
 		t.Fatalf("static links = %q", resp.Body.String())
+	}
+	for _, want := range []string{
+		`<title>Vacation House</title>`,
+		`content="Vacation House"`,
+		`href="/manifest.webmanifest"`,
+		`href="/icon.svg"`,
+		`href="/apple-touch-icon.png"`,
+	} {
+		if !strings.Contains(resp.Body.String(), want) {
+			t.Fatalf("static body missing %q: %s", want, resp.Body.String())
+		}
 	}
 	for _, header := range []string{"X-Content-Type-Options", "Referrer-Policy", "Content-Security-Policy"} {
 		if resp.Header().Get(header) == "" {
@@ -47,7 +58,7 @@ func TestHealthAndStatic(t *testing.T) {
 		}
 	}
 
-	for _, path := range []string{"/app.js", "/style.css"} {
+	for _, path := range []string{"/app.js", "/style.css", "/icon.svg", "/icon-192.png", "/icon-512.png", "/apple-touch-icon.png"} {
 		t.Run(path, func(t *testing.T) {
 			resp := request(handler, http.MethodGet, path, nil)
 			if resp.Code != http.StatusOK {
@@ -59,14 +70,53 @@ func TestHealthAndStatic(t *testing.T) {
 		})
 	}
 
+	resp = request(handler, http.MethodGet, "/manifest.webmanifest", nil)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("manifest status = %d body = %s", resp.Code, resp.Body.String())
+	}
+	if got := resp.Header().Get("Content-Type"); got != "application/manifest+json" {
+		t.Fatalf("manifest content type = %q", got)
+	}
+	var manifest webManifest
+	decodeResponse(t, resp, &manifest)
+	assertManifest(t, manifest, "Vacation House", "/", "/", "/icon-192.png", "/icon-512.png")
+
 	resp = request(handler, http.MethodGet, "/missing.js", nil)
 	if resp.Code != http.StatusNotFound {
 		t.Fatalf("missing static status = %d", resp.Code)
 	}
 }
 
+func TestAppTitleEscaping(t *testing.T) {
+	handler := New(&fakeStore{}, testAssets(), "", `House & "Cabin"`)
+
+	resp := request(handler, http.MethodGet, "/", nil)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("static status = %d", resp.Code)
+	}
+	for _, want := range []string{
+		`<title>House &amp; &#34;Cabin&#34;</title>`,
+		`<h1>House &amp; &#34;Cabin&#34;</h1>`,
+		`content="House &amp; &#34;Cabin&#34;"`,
+	} {
+		if !strings.Contains(resp.Body.String(), want) {
+			t.Fatalf("static body missing %q: %s", want, resp.Body.String())
+		}
+	}
+
+	resp = request(handler, http.MethodGet, "/manifest.webmanifest", nil)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("manifest status = %d", resp.Code)
+	}
+	var manifest webManifest
+	decodeResponse(t, resp, &manifest)
+	if manifest.Name != `House & "Cabin"` || manifest.ShortName != `House & "Cabin"` {
+		t.Fatalf("manifest title = %#v", manifest)
+	}
+}
+
 func TestPublicPath(t *testing.T) {
-	handler := New(&fakeStore{}, testAssets(), "/REPLACE_WITH_LONG_RANDOM_PATH")
+	handler := New(&fakeStore{}, testAssets(), "/REPLACE_WITH_LONG_RANDOM_PATH", "Vacation House")
 
 	resp := request(handler, http.MethodGet, "/REPLACE_WITH_LONG_RANDOM_PATH", nil)
 	if resp.Code != http.StatusOK {
@@ -75,6 +125,15 @@ func TestPublicPath(t *testing.T) {
 	if !strings.Contains(resp.Body.String(), `href="/REPLACE_WITH_LONG_RANDOM_PATH/style.css"`) ||
 		!strings.Contains(resp.Body.String(), `src="/REPLACE_WITH_LONG_RANDOM_PATH/app.js"`) {
 		t.Fatalf("prefixed static links = %q", resp.Body.String())
+	}
+	for _, want := range []string{
+		`href="/REPLACE_WITH_LONG_RANDOM_PATH/manifest.webmanifest"`,
+		`href="/REPLACE_WITH_LONG_RANDOM_PATH/icon.svg"`,
+		`href="/REPLACE_WITH_LONG_RANDOM_PATH/apple-touch-icon.png"`,
+	} {
+		if !strings.Contains(resp.Body.String(), want) {
+			t.Fatalf("prefixed static body missing %q: %s", want, resp.Body.String())
+		}
 	}
 
 	resp = request(handler, http.MethodGet, "/REPLACE_WITH_LONG_RANDOM_PATH/", nil)
@@ -85,7 +144,7 @@ func TestPublicPath(t *testing.T) {
 		t.Fatalf("trailing slash location = %q", resp.Header().Get("Location"))
 	}
 
-	for _, path := range []string{"/REPLACE_WITH_LONG_RANDOM_PATH/api/health", "/REPLACE_WITH_LONG_RANDOM_PATH/app.js", "/REPLACE_WITH_LONG_RANDOM_PATH/style.css", "/REPLACE_WITH_LONG_RANDOM_PATH/index.html"} {
+	for _, path := range []string{"/REPLACE_WITH_LONG_RANDOM_PATH/api/health", "/REPLACE_WITH_LONG_RANDOM_PATH/app.js", "/REPLACE_WITH_LONG_RANDOM_PATH/style.css", "/REPLACE_WITH_LONG_RANDOM_PATH/index.html", "/REPLACE_WITH_LONG_RANDOM_PATH/icon.svg", "/REPLACE_WITH_LONG_RANDOM_PATH/icon-192.png", "/REPLACE_WITH_LONG_RANDOM_PATH/icon-512.png", "/REPLACE_WITH_LONG_RANDOM_PATH/apple-touch-icon.png"} {
 		t.Run(path, func(t *testing.T) {
 			resp := request(handler, http.MethodGet, path, nil)
 			if resp.Code != http.StatusOK {
@@ -94,7 +153,15 @@ func TestPublicPath(t *testing.T) {
 		})
 	}
 
-	for _, path := range []string{"/", "/api/health", "/app.js", "/style.css", "/REPLACE_WITH_LONG_RANDOM_PATH-extra/api/health"} {
+	resp = request(handler, http.MethodGet, "/REPLACE_WITH_LONG_RANDOM_PATH/manifest.webmanifest", nil)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("prefixed manifest status = %d body = %s", resp.Code, resp.Body.String())
+	}
+	var manifest webManifest
+	decodeResponse(t, resp, &manifest)
+	assertManifest(t, manifest, "Vacation House", "/REPLACE_WITH_LONG_RANDOM_PATH", "/REPLACE_WITH_LONG_RANDOM_PATH", "/REPLACE_WITH_LONG_RANDOM_PATH/icon-192.png", "/REPLACE_WITH_LONG_RANDOM_PATH/icon-512.png")
+
+	for _, path := range []string{"/", "/api/health", "/app.js", "/style.css", "/manifest.webmanifest", "/REPLACE_WITH_LONG_RANDOM_PATH-extra/api/health"} {
 		t.Run(path, func(t *testing.T) {
 			resp := request(handler, http.MethodGet, path, nil)
 			if resp.Code != http.StatusNotFound {
@@ -108,7 +175,7 @@ func TestListBookings(t *testing.T) {
 	store := &fakeStore{
 		listResult: []booking.Booking{{UID: "uid-1", Name: "Family stay", Start: "2026-07-10", End: "2026-07-17"}},
 	}
-	handler := New(store, testAssets(), "")
+	handler := testHandler(store)
 
 	resp := request(handler, http.MethodGet, "/api/bookings?start=2026-07-01&end=2026-08-01", nil)
 	if resp.Code != http.StatusOK {
@@ -125,7 +192,7 @@ func TestListBookings(t *testing.T) {
 }
 
 func TestListBookingsReturnsEmptyArray(t *testing.T) {
-	handler := New(&fakeStore{}, testAssets(), "")
+	handler := testHandler(&fakeStore{})
 
 	resp := request(handler, http.MethodGet, "/api/bookings?start=2026-07-01&end=2026-08-01", nil)
 	if resp.Code != http.StatusOK {
@@ -138,7 +205,7 @@ func TestListBookingsReturnsEmptyArray(t *testing.T) {
 
 func TestListBookingsValidatesQuery(t *testing.T) {
 	store := &fakeStore{}
-	handler := New(store, testAssets(), "")
+	handler := testHandler(store)
 
 	resp := request(handler, http.MethodGet, "/api/bookings?start=2026-07-01", nil)
 	if resp.Code != http.StatusBadRequest {
@@ -154,7 +221,7 @@ func TestCreateBookingIgnoresClientMetadata(t *testing.T) {
 	store := &fakeStore{
 		createResult: booking.Booking{UID: "server-uid", Name: "Family stay", Start: "2026-07-10", End: "2026-07-17"},
 	}
-	handler := New(store, testAssets(), "")
+	handler := testHandler(store)
 
 	body := `{"uid":"client-uid","href":"href","etag":"etag","name":"Family stay","start":"2026-07-10","end":"2026-07-17","note":"note"}`
 	resp := request(handler, http.MethodPost, "/api/bookings", strings.NewReader(body))
@@ -171,7 +238,7 @@ func TestCreateBookingIgnoresClientMetadata(t *testing.T) {
 
 func TestCreateBookingValidatesBeforeStore(t *testing.T) {
 	store := &fakeStore{}
-	handler := New(store, testAssets(), "")
+	handler := testHandler(store)
 
 	resp := request(handler, http.MethodPost, "/api/bookings", strings.NewReader(`{"name":"","start":"2026-07-10","end":"2026-07-17"}`))
 	if resp.Code != http.StatusBadRequest {
@@ -187,7 +254,7 @@ func TestUpdateBookingUsesPathUID(t *testing.T) {
 	store := &fakeStore{
 		updateResult: booking.Booking{UID: "path-uid", Name: "Family stay", Start: "2026-07-10", End: "2026-07-17"},
 	}
-	handler := New(store, testAssets(), "")
+	handler := testHandler(store)
 
 	body := `{"uid":"path-uid","href":"href","etag":"etag","name":"Family stay","start":"2026-07-10","end":"2026-07-17"}`
 	resp := request(handler, http.MethodPut, "/api/bookings/path-uid", strings.NewReader(body))
@@ -200,7 +267,7 @@ func TestUpdateBookingUsesPathUID(t *testing.T) {
 }
 
 func TestUpdateRejectsMismatchedUID(t *testing.T) {
-	handler := New(&fakeStore{}, testAssets(), "")
+	handler := testHandler(&fakeStore{})
 	resp := request(handler, http.MethodPut, "/api/bookings/path-uid", strings.NewReader(`{"uid":"other","name":"Family stay","start":"2026-07-10","end":"2026-07-17"}`))
 	if resp.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d body = %s", resp.Code, resp.Body.String())
@@ -210,7 +277,7 @@ func TestUpdateRejectsMismatchedUID(t *testing.T) {
 
 func TestUpdateBookingValidatesBeforeStore(t *testing.T) {
 	store := &fakeStore{}
-	handler := New(store, testAssets(), "")
+	handler := testHandler(store)
 
 	resp := request(handler, http.MethodPut, "/api/bookings/path-uid", strings.NewReader(`{"name":"Family stay","start":"2026-07-17","end":"2026-07-10"}`))
 	if resp.Code != http.StatusBadRequest {
@@ -224,7 +291,7 @@ func TestUpdateBookingValidatesBeforeStore(t *testing.T) {
 
 func TestDeleteBookingAllowsEmptyBody(t *testing.T) {
 	store := &fakeStore{}
-	handler := New(store, testAssets(), "")
+	handler := testHandler(store)
 
 	resp := request(handler, http.MethodDelete, "/api/bookings/path-uid", nil)
 	if resp.Code != http.StatusNoContent {
@@ -237,7 +304,7 @@ func TestDeleteBookingAllowsEmptyBody(t *testing.T) {
 
 func TestDeleteBookingAcceptsMetadataBody(t *testing.T) {
 	store := &fakeStore{}
-	handler := New(store, testAssets(), "")
+	handler := testHandler(store)
 
 	resp := request(handler, http.MethodDelete, "/api/bookings/path-uid", strings.NewReader(`{"href":"href","etag":"etag"}`))
 	if resp.Code != http.StatusNoContent {
@@ -249,7 +316,7 @@ func TestDeleteBookingAcceptsMetadataBody(t *testing.T) {
 }
 
 func TestStrictJSONAndBodyLimit(t *testing.T) {
-	handler := New(&fakeStore{}, testAssets(), "")
+	handler := testHandler(&fakeStore{})
 
 	resp := request(handler, http.MethodPost, "/api/bookings", strings.NewReader(`{"name":"Family stay","start":"2026-07-10","end":"2026-07-17","extra":true}`))
 	if resp.Code != http.StatusBadRequest {
@@ -279,7 +346,7 @@ func TestErrorMappingAndMethods(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			handler := New(&fakeStore{listErr: tc.err}, testAssets(), "")
+			handler := testHandler(&fakeStore{listErr: tc.err})
 			resp := request(handler, http.MethodGet, "/api/bookings?start=2026-07-01&end=2026-08-01", nil)
 			if resp.Code != tc.want {
 				t.Fatalf("status = %d body = %s", resp.Code, resp.Body.String())
@@ -288,7 +355,7 @@ func TestErrorMappingAndMethods(t *testing.T) {
 		})
 	}
 
-	handler := New(&fakeStore{}, testAssets(), "")
+	handler := testHandler(&fakeStore{})
 	resp := request(handler, http.MethodPatch, "/api/bookings", nil)
 	if resp.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("status = %d", resp.Code)
@@ -370,9 +437,60 @@ type ioReader interface {
 
 func testAssets() fs.FS {
 	return fstest.MapFS{
-		"index.html": {Data: []byte(`<!doctype html><title>booky</title><link rel="stylesheet" href="{{PUBLIC_PATH}}/style.css"><script src="{{PUBLIC_PATH}}/app.js"></script><h1>booky</h1>`)},
-		"app.js":     {Data: []byte("console.log('ok')")},
-		"style.css":  {Data: []byte("body{}")},
+		"index.html":           {Data: []byte(`<!doctype html><title>{{APP_TITLE}}</title><meta name="apple-mobile-web-app-title" content="{{APP_TITLE}}"><link rel="manifest" href="{{PUBLIC_PATH}}/manifest.webmanifest"><link rel="icon" type="image/svg+xml" href="{{PUBLIC_PATH}}/icon.svg"><link rel="apple-touch-icon" href="{{PUBLIC_PATH}}/apple-touch-icon.png"><link rel="stylesheet" href="{{PUBLIC_PATH}}/style.css"><script src="{{PUBLIC_PATH}}/app.js"></script><h1>{{APP_TITLE}}</h1>`)},
+		"app.js":               {Data: []byte("console.log('ok')")},
+		"style.css":            {Data: []byte("body{}")},
+		"icon.svg":             {Data: []byte("<svg></svg>")},
+		"icon-192.png":         {Data: []byte("png192")},
+		"icon-512.png":         {Data: []byte("png512")},
+		"apple-touch-icon.png": {Data: []byte("png180")},
+	}
+}
+
+func testHandler(store Store) http.Handler {
+	return New(store, testAssets(), "", "booky")
+}
+
+type webManifest struct {
+	Name            string         `json:"name"`
+	ShortName       string         `json:"short_name"`
+	ID              string         `json:"id"`
+	StartURL        string         `json:"start_url"`
+	Scope           string         `json:"scope"`
+	Display         string         `json:"display"`
+	ThemeColor      string         `json:"theme_color"`
+	BackgroundColor string         `json:"background_color"`
+	Icons           []manifestIcon `json:"icons"`
+}
+
+type manifestIcon struct {
+	Src   string `json:"src"`
+	Sizes string `json:"sizes"`
+	Type  string `json:"type"`
+}
+
+func assertManifest(t *testing.T, manifest webManifest, title, startURL, scope, icon192, icon512 string) {
+	t.Helper()
+	if manifest.Name != title || manifest.ShortName != title {
+		t.Fatalf("manifest title = %#v, want %q", manifest, title)
+	}
+	if manifest.ID != startURL || manifest.StartURL != startURL || manifest.Scope != scope {
+		t.Fatalf("manifest navigation = %#v", manifest)
+	}
+	if manifest.Display != "standalone" || manifest.ThemeColor != "#4f6f8f" || manifest.BackgroundColor != "#f6f4ef" {
+		t.Fatalf("manifest display = %#v", manifest)
+	}
+	if len(manifest.Icons) != 2 {
+		t.Fatalf("manifest icons = %#v", manifest.Icons)
+	}
+	wantIcons := []manifestIcon{
+		{Src: icon192, Sizes: "192x192", Type: "image/png"},
+		{Src: icon512, Sizes: "512x512", Type: "image/png"},
+	}
+	for i, want := range wantIcons {
+		if manifest.Icons[i] != want {
+			t.Fatalf("manifest icon[%d] = %#v, want %#v", i, manifest.Icons[i], want)
+		}
 	}
 }
 

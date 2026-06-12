@@ -33,7 +33,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	handler := httpd.New(store, web.Files, cfg.PublicPath)
+	handler := httpd.New(store, web.Files, cfg.PublicPath, cfg.AppTitle)
 	server := &http.Server{
 		Addr:              cfg.ListenAddr,
 		Handler:           handler,

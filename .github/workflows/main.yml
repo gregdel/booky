@@ -33,7 +33,7 @@ jobs:
         bun-version-file: package.json
 
     - name: Test
-      run: sh scripts/booky.sh release-check
+      run: sh scripts/booky.sh test
 
   build:
     name: Build
@@ -57,6 +57,9 @@ jobs:
       uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
       with:
         bun-version-file: package.json
+
+    - name: Install app icon tooling
+      run: sudo apt-get update && sudo apt-get install -y librsvg2-bin
 
     - name: Build
       run: sh scripts/booky.sh build

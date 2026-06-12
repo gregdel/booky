@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1254 1254" width="1254" height="1254" role="img" aria-label="House calendar icon">
+  <defs>
+    <style>
+      .blue{fill:#416b98;stroke:#416b98;stroke-linecap:round;stroke-linejoin:round}
+    </style>
+  </defs>
+  <g class="blue">
+    <!-- house outline -->
+    <path d="M300 544 585 306c26-22 59-22 86 0l285 238" fill="none" stroke-width="82"/>
+    <path d="M335 544v292c0 45 37 82 82 82h420c45 0 82-37 82-82V544" fill="none" stroke-width="82"/>
+    <rect x="815" y="313" width="83" height="155" rx="13" stroke="none"/>
+
+    <!-- calendar body/header -->
+    <path d="M487 514h281a48 48 0 0 1 48 48v25H439v-25a48 48 0 0 1 48-48z" stroke="none"/>
+
+    <!-- binder rings -->
+    <path d="M541 487v50" fill="none" stroke="#fff" stroke-width="57"/>
+    <path d="M541 487v50" fill="none" stroke-width="34"/>
+    <path d="M710 487v50" fill="none" stroke="#fff" stroke-width="57"/>
+    <path d="M710 487v50" fill="none" stroke-width="34"/>
+
+    <!-- calendar squares -->
+    <rect x="478" y="621" width="67" height="56" rx="11" stroke="none"/>
+    <rect x="594" y="621" width="67" height="56" rx="11" stroke="none"/>
+    <rect x="710" y="621" width="67" height="56" rx="11" stroke="none"/>
+    <rect x="478" y="707" width="67" height="56" rx="11" stroke="none"/>
+    <rect x="594" y="707" width="67" height="56" rx="11" stroke="none"/>
+    <rect x="710" y="707" width="67" height="65" rx="11" stroke="none"/>
+
+    <!-- check mark -->
+    <path d="M727 735l18 18 41-47" fill="none" stroke="#fff" stroke-width="13"/>
+  </g>
+</svg>
