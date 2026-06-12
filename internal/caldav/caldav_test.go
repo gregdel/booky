@@ -1,8 +1,10 @@
 package caldav
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -111,7 +113,8 @@ func TestListHandlesNamespacesMultipleResponsesAndIgnoredEvents(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := newTestClient(t, server.URL)
+	logs := &captureLogger{}
+	client := newTestClientWithLogger(t, server.URL, logs)
 	got, err := client.List(context.Background(), booking.QueryRange{Start: "2026-07-01", End: "2026-08-01"})
 	if err != nil {
 		t.Fatalf("List returned error: %v", err)
@@ -119,6 +122,7 @@ func TestListHandlesNamespacesMultipleResponsesAndIgnoredEvents(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("len(got) = %d, want 1", len(got))
 	}
+	assertNoLog(t, logs)
 }
 
 func TestListMapsErrors(t *testing.T) {
@@ -145,7 +149,7 @@ func TestListMapsErrors(t *testing.T) {
 	}
 }
 
-func TestListMapsMalformedUpstreamData(t *testing.T) {
+func TestListSkipsMalformedBookyEvent(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(207)
 		_, _ = w.Write([]byte(multistatusXML("booky-uid.ics", "etag-1", `BEGIN:VCALENDAR
@@ -156,6 +160,70 @@ SUMMARY:Broken
 X-BOOKY:1
 END:VEVENT
 END:VCALENDAR`)))
+	}))
+	defer server.Close()
+
+	logs := &captureLogger{}
+	client := newTestClientWithLogger(t, server.URL, logs)
+	got, err := client.List(context.Background(), booking.QueryRange{Start: "2026-07-01", End: "2026-08-01"})
+	if err != nil {
+		t.Fatalf("List returned error: %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("len(got) = %d, want 0", len(got))
+	}
+	assertLogContains(t, logs, `skip malformed booky event href="booky-uid.ics"`, "booky event invalid DTSTART", "skipped 1 malformed booky event(s) during CalDAV list")
+}
+
+func TestListReturnsValidBookingsWhenOneBookyEventIsMalformed(t *testing.T) {
+	valid, err := ical.MarshalCalendar(booking.Booking{
+		UID:   "booky-valid",
+		Name:  "Family stay",
+		Start: "2026-07-10",
+		End:   "2026-07-17",
+	}, time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatalf("MarshalCalendar returned error: %v", err)
+	}
+	malformed := strings.Join([]string{
+		"BEGIN:VCALENDAR",
+		"BEGIN:VEVENT",
+		"UID:booky-bad",
+		"DTSTART;VALUE=DATE:20260230",
+		"SUMMARY:Broken",
+		"X-BOOKY:1",
+		"END:VEVENT",
+		"END:VCALENDAR",
+	}, "\r\n")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(207)
+		_, _ = w.Write([]byte(multistatusResponsesXML(
+			davResponseXML("booky-valid.ics", `"etag-valid"`, valid),
+			davResponseXML("booky-bad.ics", `"etag-bad"`, malformed),
+		)))
+	}))
+	defer server.Close()
+
+	logs := &captureLogger{}
+	client := newTestClientWithLogger(t, server.URL, logs)
+	got, err := client.List(context.Background(), booking.QueryRange{Start: "2026-07-01", End: "2026-08-01"})
+	if err != nil {
+		t.Fatalf("List returned error: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("len(got) = %d, want 1", len(got))
+	}
+	if got[0].UID != "booky-valid" || got[0].ETag != `"etag-valid"` {
+		t.Fatalf("booking = %#v", got[0])
+	}
+	assertLogContains(t, logs, `skip malformed booky event href="booky-bad.ics"`, "booky event invalid DTSTART", "skipped 1 malformed booky event(s) during CalDAV list")
+}
+
+func TestListMapsMalformedMultiStatusXML(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(207)
+		_, _ = w.Write([]byte(`<multistatus xmlns="DAV:"><response>`))
 	}))
 	defer server.Close()
 
@@ -379,17 +447,22 @@ func TestDeleteRequiresETagBeforeNetwork(t *testing.T) {
 
 func newTestClient(t *testing.T, baseURL string) *Client {
 	t.Helper()
+	return newTestClientWithLogger(t, baseURL, nil)
+}
+
+func newTestClientWithLogger(t *testing.T, baseURL string, l logger) *Client {
+	t.Helper()
 
 	u, err := url.Parse(baseURL)
 	if err != nil {
 		t.Fatalf("parse base URL: %v", err)
 	}
 	u.Path = "/remote.php/dav/calendars/family-house/vacation-house/"
-	client, err := New(config.CalDAVConfig{
+	client, err := newWithLogger(config.CalDAVConfig{
 		URL:  u.String(),
 		User: "family-house",
 		Pass: "app-password",
-	}, nil)
+	}, nil, l)
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}
@@ -399,7 +472,18 @@ func newTestClient(t *testing.T, baseURL string) *Client {
 func multistatusXML(href, etag, calendarData string) string {
 	return `<?xml version="1.0"?>
 <multistatus xmlns="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">
-  <response>
+` + davResponseXML(href, etag, calendarData) + `</multistatus>`
+}
+
+func multistatusResponsesXML(responses ...string) string {
+	return `<?xml version="1.0"?>
+<multistatus xmlns="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">
+` + strings.Join(responses, "\n") + `
+</multistatus>`
+}
+
+func davResponseXML(href, etag, calendarData string) string {
+	return `  <response>
     <href>` + href + `</href>
     <propstat>
       <prop>
@@ -409,7 +493,7 @@ func multistatusXML(href, etag, calendarData string) string {
       <status>HTTP/1.1 200 OK</status>
     </propstat>
   </response>
-</multistatus>`
+`
 }
 
 func escapeXML(value string) string {
@@ -417,4 +501,30 @@ func escapeXML(value string) string {
 	value = strings.ReplaceAll(value, "<", "&lt;")
 	value = strings.ReplaceAll(value, ">", "&gt;")
 	return value
+}
+
+type captureLogger struct {
+	bytes.Buffer
+}
+
+func (l *captureLogger) Printf(format string, args ...any) {
+	_, _ = fmt.Fprintf(&l.Buffer, format, args...)
+	_ = l.WriteByte('\n')
+}
+
+func assertLogContains(t *testing.T, logs *captureLogger, values ...string) {
+	t.Helper()
+	got := logs.String()
+	for _, value := range values {
+		if !strings.Contains(got, value) {
+			t.Fatalf("log = %q, want to contain %q", got, value)
+		}
+	}
+}
+
+func assertNoLog(t *testing.T, logs *captureLogger) {
+	t.Helper()
+	if got := logs.String(); got != "" {
+		t.Fatalf("log = %q, want empty", got)
+	}
 }

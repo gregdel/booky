@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -32,9 +33,18 @@ type Client struct {
 	pass       string
 	httpClient *http.Client
 	now        func() time.Time
+	logger     logger
+}
+
+type logger interface {
+	Printf(string, ...any)
 }
 
 func New(cfg config.CalDAVConfig, httpClient *http.Client) (*Client, error) {
+	return newWithLogger(cfg, httpClient, log.Default())
+}
+
+func newWithLogger(cfg config.CalDAVConfig, httpClient *http.Client, l logger) (*Client, error) {
 	collection, err := url.Parse(cfg.URL)
 	if err != nil {
 		return nil, fmt.Errorf("parse caldav url: %w", err)
@@ -51,6 +61,9 @@ func New(cfg config.CalDAVConfig, httpClient *http.Client) (*Client, error) {
 	if httpClient == nil {
 		httpClient = &http.Client{Timeout: defaultTimeout}
 	}
+	if l == nil {
+		l = log.Default()
+	}
 
 	return &Client{
 		collection: collection,
@@ -58,6 +71,7 @@ func New(cfg config.CalDAVConfig, httpClient *http.Client) (*Client, error) {
 		pass:       cfg.Pass,
 		httpClient: httpClient,
 		now:        time.Now,
+		logger:     l,
 	}, nil
 }
 
@@ -215,6 +229,7 @@ func (c *Client) parseMultiStatus(data []byte) ([]booking.Booking, error) {
 	}
 
 	var bookings []booking.Booking
+	skipped := 0
 	for _, response := range ms.Responses {
 		status := responseStatus(response)
 		if status != 0 && status != http.StatusOK {
@@ -230,7 +245,9 @@ func (c *Client) parseMultiStatus(data []byte) ([]booking.Booking, error) {
 		}
 		parsed, err := ical.ParseCalendar(calendarData)
 		if err != nil {
-			return nil, fmt.Errorf("%w: parse calendar data: %v", ErrUpstream, err)
+			c.logger.Printf("skip malformed booky event href=%q: %v", response.Href, err)
+			skipped++
+			continue
 		}
 
 		etag := response.ETag()
@@ -238,6 +255,9 @@ func (c *Client) parseMultiStatus(data []byte) ([]booking.Booking, error) {
 			b.ETag = etag
 			bookings = append(bookings, b)
 		}
+	}
+	if skipped > 0 {
+		c.logger.Printf("skipped %d malformed booky event(s) during CalDAV list", skipped)
 	}
 
 	return bookings, nil
