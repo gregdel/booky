@@ -21,12 +21,15 @@ do_web() {
 }
 
 do_test() {
-	do_web
-	go test -count=1 ./...
+	bun test web/src/*.test.ts
+	go test -count=1 ./internal/...
 }
 
 do_build() {
 	do_web
+	bun run typecheck
+	go test -count=1 ./...
+	go vet ./...
 	mkdir -p bin
 	CGO_ENABLED=0 go build -o bin/booky ./cmd/booky
 }
@@ -36,19 +39,7 @@ do_run() {
 	go run ./cmd/booky -config config.yaml
 }
 
-do_release_check() {
-	do_web
-	bun run typecheck
-	go test -count=1 ./...
-	go vet ./...
-	mkdir -p bin
-	CGO_ENABLED=0 go build -o bin/booky ./cmd/booky
-}
-
 case "${1:-}" in
-	web)
-		do_web
-		;;
 	test)
 		do_test
 		;;
@@ -58,11 +49,8 @@ case "${1:-}" in
 	run)
 		do_run
 		;;
-	release-check)
-		do_release_check
-		;;
 	*)
-		printf 'Usage: %s {web|test|build|run|release-check}\n' "$0" >&2
+		printf 'Usage: %s {run|test|build}\n' "$0" >&2
 		exit 1
 		;;
 esac

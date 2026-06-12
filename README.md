@@ -50,12 +50,6 @@ caldav:
 
 ## Development
 
-Build the embedded frontend assets:
-
-```sh
-sh scripts/booky.sh web
-```
-
 Run the app:
 
 ```sh
@@ -70,15 +64,15 @@ Run tests:
 sh scripts/booky.sh test
 ```
 
-Run the release checks:
+Build a release-ready static binary:
 
 ```sh
-sh scripts/booky.sh release-check
+sh scripts/booky.sh build
 ```
 
 ## Build
 
-Build a Linux static binary:
+Build a release-ready Linux static binary:
 
 ```sh
 sh scripts/booky.sh build
@@ -174,25 +168,3 @@ booky creates no database files. Back up the configured Nextcloud calendar using
 - Overlapping bookings are allowed
 - No conflict prevention beyond CalDAV ETag handling for updates and deletes
 - No local database or offline mode
-
-## Release Checklist
-
-Before publishing or deploying:
-
-```sh
-sh scripts/booky.sh release-check
-```
-
-Then test against a real ignored `config.yaml`:
-
-1. Start `bin/booky -config config.yaml`.
-2. Open the public root URL.
-3. Create a temporary booking named `booky release test`.
-4. Confirm it appears in Nextcloud Calendar.
-5. Edit the name or note.
-6. Drag it to another date.
-7. Resize it.
-8. Delete it.
-9. Confirm it is gone from Nextcloud Calendar.
-10. Confirm browser devtools do not show Nextcloud credentials.
-11. Confirm no database files were created.
