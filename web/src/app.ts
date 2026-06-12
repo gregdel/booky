@@ -24,7 +24,6 @@ const LAST_DAY_ERROR = "Last day must be on or after start.";
 
 type Booking = {
   uid?: string;
-  href?: string;
   etag?: string;
   name: string;
   start: string;
@@ -34,7 +33,6 @@ type Booking = {
 
 type BookingEvent = EventApi & {
   extendedProps: {
-    href?: string;
     etag?: string;
     note?: string;
   };
@@ -154,7 +152,6 @@ function bookingToEvent(booking: Booking): EventInput {
     allDay: true,
     ...eventColorsForName(booking.name),
     extendedProps: {
-      href: booking.href || "",
       etag: booking.etag || "",
       note: booking.note || "",
     },
@@ -237,7 +234,6 @@ async function deleteActiveBooking(): Promise<void> {
     await apiFetch<null>(`/bookings/${encodeURIComponent(activeBooking.uid)}`, {
       method: "DELETE",
       body: JSON.stringify({
-        href: activeBooking.href || "",
         etag: activeBooking.etag || "",
       }),
     });
@@ -261,7 +257,6 @@ function formBooking(): Booking {
   };
 
   if (activeBooking) {
-    booking.href = activeBooking.href || "";
     booking.etag = activeBooking.etag || "";
   }
 
@@ -271,7 +266,6 @@ function formBooking(): Booking {
 function eventToStoredBooking(event: BookingEvent): Booking {
   return {
     uid: event.id,
-    href: event.extendedProps.href || "",
     etag: event.extendedProps.etag || "",
     name: event.title,
     start: dateOnly(event.startStr || localDateString(requiredDate(event.start))),
@@ -297,7 +291,6 @@ function updateEvent(event: BookingEvent, booking: Booking): void {
   event.setProp("textColor", colors.textColor);
   event.setStart(booking.start);
   event.setEnd(booking.end);
-  event.setExtendedProp("href", booking.href || "");
   event.setExtendedProp("etag", booking.etag || "");
   event.setExtendedProp("note", booking.note || "");
 }

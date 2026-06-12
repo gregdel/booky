@@ -72,9 +72,6 @@ func TestListSendsReportAndParsesMultiStatus(t *testing.T) {
 	if got[0].UID != "booky-uid" || got[0].Name != "Family stay" || got[0].ETag != `"etag-1"` {
 		t.Fatalf("booking = %#v", got[0])
 	}
-	if got[0].Href != server.URL+"/remote.php/dav/calendars/family-house/vacation-house/booky-uid.ics" {
-		t.Fatalf("Href = %q", got[0].Href)
-	}
 }
 
 func TestListHandlesNamespacesMultipleResponsesAndIgnoredEvents(t *testing.T) {
@@ -121,9 +118,6 @@ func TestListHandlesNamespacesMultipleResponsesAndIgnoredEvents(t *testing.T) {
 	}
 	if len(got) != 1 {
 		t.Fatalf("len(got) = %d, want 1", len(got))
-	}
-	if got[0].Href != server.URL+"/remote.php/dav/calendars/family-house/vacation-house/booky-uid.ics" {
-		t.Fatalf("Href = %q", got[0].Href)
 	}
 }
 
@@ -224,12 +218,12 @@ func TestCreateMapsCollisionToConflict(t *testing.T) {
 	}
 }
 
-func TestUpdateUsesHrefOptionalIfMatchAndRefreshesETag(t *testing.T) {
+func TestUpdateUsesUIDTargetIfMatchAndRefreshesETag(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPut {
 			t.Fatalf("method = %s, want PUT", r.Method)
 		}
-		if r.URL.Path != "/remote.php/dav/calendars/family-house/vacation-house/custom.ics" {
+		if r.URL.Path != "/remote.php/dav/calendars/family-house/vacation-house/booky-uid.ics" {
 			t.Fatalf("path = %s", r.URL.Path)
 		}
 		if got := r.Header.Get("If-Match"); got != `"etag-old"` {
@@ -243,7 +237,6 @@ func TestUpdateUsesHrefOptionalIfMatchAndRefreshesETag(t *testing.T) {
 	client := newTestClient(t, server.URL)
 	got, err := client.Update(context.Background(), booking.Booking{
 		UID:   "booky-uid",
-		Href:  "/remote.php/dav/calendars/family-house/vacation-house/custom.ics",
 		ETag:  `"etag-old"`,
 		Name:  "Family stay",
 		Start: "2026-07-10",
@@ -257,7 +250,7 @@ func TestUpdateUsesHrefOptionalIfMatchAndRefreshesETag(t *testing.T) {
 	}
 }
 
-func TestUpdateUsesUIDFallbackAndOmitsEmptyIfMatch(t *testing.T) {
+func TestUpdateUsesUIDTargetAndOmitsEmptyIfMatch(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/remote.php/dav/calendars/family-house/vacation-house/booky-uid.ics" {
 			t.Fatalf("path = %s", r.URL.Path)
@@ -338,6 +331,9 @@ func TestDeleteUsesOptionalIfMatchAndMapsStatuses(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if r.Method != http.MethodDelete {
 					t.Fatalf("method = %s, want DELETE", r.Method)
+				}
+				if r.URL.Path != "/remote.php/dav/calendars/family-house/vacation-house/booky-uid.ics" {
+					t.Fatalf("path = %s", r.URL.Path)
 				}
 				if got := r.Header.Get("If-Match"); got != `"etag-old"` {
 					t.Fatalf("If-Match = %q", got)

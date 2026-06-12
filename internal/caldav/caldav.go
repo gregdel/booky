@@ -128,7 +128,6 @@ func (c *Client) Create(ctx context.Context, b booking.Booking) (booking.Booking
 		return booking.Booking{}, mapStatus(resp.StatusCode, "PUT create")
 	}
 
-	b.Href = target
 	b.ETag = resp.Header.Get("ETag")
 	return b, nil
 }
@@ -139,7 +138,7 @@ func (c *Client) Update(ctx context.Context, b booking.Booking) (booking.Booking
 		return booking.Booking{}, err
 	}
 
-	target, err := c.targetURL(b)
+	target, err := c.mutationURL(b)
 	if err != nil {
 		return booking.Booking{}, err
 	}
@@ -165,7 +164,6 @@ func (c *Client) Update(ctx context.Context, b booking.Booking) (booking.Booking
 		return booking.Booking{}, mapStatus(resp.StatusCode, "PUT update")
 	}
 
-	b.Href = target
 	if etag := resp.Header.Get("ETag"); etag != "" {
 		b.ETag = etag
 	}
@@ -173,7 +171,7 @@ func (c *Client) Update(ctx context.Context, b booking.Booking) (booking.Booking
 }
 
 func (c *Client) Delete(ctx context.Context, b booking.Booking) error {
-	target, err := c.targetURL(b)
+	target, err := c.mutationURL(b)
 	if err != nil {
 		return err
 	}
@@ -230,10 +228,8 @@ func (c *Client) parseMultiStatus(data []byte) ([]booking.Booking, error) {
 			return nil, fmt.Errorf("%w: parse calendar data: %v", ErrUpstream, err)
 		}
 
-		href := c.resolveHref(response.Href)
 		etag := response.ETag()
 		for _, b := range parsed {
-			b.Href = href
 			b.ETag = etag
 			bookings = append(bookings, b)
 		}
@@ -264,14 +260,11 @@ func parseHTTPStatus(value string) int {
 	return 0
 }
 
-func (c *Client) targetURL(b booking.Booking) (string, error) {
-	if b.Href != "" {
-		return c.resolveHref(b.Href), nil
-	}
+func (c *Client) mutationURL(b booking.Booking) (string, error) {
 	if b.UID != "" {
 		return c.uidURL(b.UID).String(), nil
 	}
-	return "", errors.New("href or uid is required")
+	return "", errors.New("uid is required")
 }
 
 func (c *Client) uidURL(uid string) *url.URL {
@@ -279,14 +272,6 @@ func (c *Client) uidURL(uid string) *url.URL {
 	u.Path = c.collection.Path + uid + ".ics"
 	u.RawPath = c.collection.EscapedPath() + url.PathEscape(uid) + ".ics"
 	return &u
-}
-
-func (c *Client) resolveHref(href string) string {
-	u, err := url.Parse(href)
-	if err != nil {
-		return href
-	}
-	return c.collection.ResolveReference(u).String()
 }
 
 func reportBody(r booking.QueryRange) (string, error) {

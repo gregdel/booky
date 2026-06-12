@@ -255,7 +255,6 @@ func (s *Server) updateBooking(w http.ResponseWriter, r *http.Request, uid strin
 
 	b := booking.Booking{
 		UID:   uid,
-		Href:  req.Href,
 		ETag:  req.ETag,
 		Name:  req.Name,
 		Start: req.Start,
@@ -282,7 +281,7 @@ func (s *Server) deleteBooking(w http.ResponseWriter, r *http.Request, uid strin
 		return
 	}
 
-	if err := s.store.Delete(r.Context(), booking.Booking{UID: uid, Href: req.Href, ETag: req.ETag}); err != nil {
+	if err := s.store.Delete(r.Context(), booking.Booking{UID: uid, ETag: req.ETag}); err != nil {
 		writeMappedError(w, err)
 		return
 	}
@@ -291,7 +290,6 @@ func (s *Server) deleteBooking(w http.ResponseWriter, r *http.Request, uid strin
 
 type bookingRequest struct {
 	UID   string `json:"uid"`
-	Href  string `json:"href"`
 	ETag  string `json:"etag"`
 	Name  string `json:"name"`
 	Start string `json:"start"`
@@ -300,7 +298,6 @@ type bookingRequest struct {
 }
 
 type deleteRequest struct {
-	Href string `json:"href"`
 	ETag string `json:"etag"`
 }
 

@@ -22,7 +22,6 @@ const (
 
 type Booking struct {
 	UID   string `json:"uid,omitempty"`
-	Href  string `json:"href,omitempty"`
 	ETag  string `json:"etag,omitempty"`
 	Name  string `json:"name"`
 	Start string `json:"start"`

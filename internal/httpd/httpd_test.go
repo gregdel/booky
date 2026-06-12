@@ -223,16 +223,30 @@ func TestCreateBookingIgnoresClientMetadata(t *testing.T) {
 	}
 	handler := testHandler(store)
 
-	body := `{"uid":"client-uid","href":"href","etag":"etag","name":"Family stay","start":"2026-07-10","end":"2026-07-17","note":"note"}`
+	body := `{"uid":"client-uid","etag":"etag","name":"Family stay","start":"2026-07-10","end":"2026-07-17","note":"note"}`
 	resp := request(handler, http.MethodPost, "/api/bookings", strings.NewReader(body))
 	if resp.Code != http.StatusCreated {
 		t.Fatalf("status = %d body = %s", resp.Code, resp.Body.String())
 	}
-	if store.createBooking.UID != "" || store.createBooking.Href != "" || store.createBooking.ETag != "" {
+	if store.createBooking.UID != "" || store.createBooking.ETag != "" {
 		t.Fatalf("create booking kept metadata: %#v", store.createBooking)
 	}
 	if store.createBooking.Name != "Family stay" || store.createBooking.Note != "note" {
 		t.Fatalf("create booking = %#v", store.createBooking)
+	}
+}
+
+func TestCreateBookingRejectsHref(t *testing.T) {
+	store := &fakeStore{}
+	handler := testHandler(store)
+
+	resp := request(handler, http.MethodPost, "/api/bookings", strings.NewReader(`{"href":"href","name":"Family stay","start":"2026-07-10","end":"2026-07-17"}`))
+	if resp.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d body = %s", resp.Code, resp.Body.String())
+	}
+	assertErrorShape(t, resp)
+	if store.createCalls != 0 {
+		t.Fatalf("create calls = %d, want 0", store.createCalls)
 	}
 }
 
@@ -256,13 +270,27 @@ func TestUpdateBookingUsesPathUID(t *testing.T) {
 	}
 	handler := testHandler(store)
 
-	body := `{"uid":"path-uid","href":"href","etag":"etag","name":"Family stay","start":"2026-07-10","end":"2026-07-17"}`
+	body := `{"uid":"path-uid","etag":"etag","name":"Family stay","start":"2026-07-10","end":"2026-07-17"}`
 	resp := request(handler, http.MethodPut, "/api/bookings/path-uid", strings.NewReader(body))
 	if resp.Code != http.StatusOK {
 		t.Fatalf("status = %d body = %s", resp.Code, resp.Body.String())
 	}
-	if store.updateBooking.UID != "path-uid" || store.updateBooking.Href != "href" || store.updateBooking.ETag != "etag" {
+	if store.updateBooking.UID != "path-uid" || store.updateBooking.ETag != "etag" {
 		t.Fatalf("update booking = %#v", store.updateBooking)
+	}
+}
+
+func TestUpdateBookingRejectsHref(t *testing.T) {
+	store := &fakeStore{}
+	handler := testHandler(store)
+
+	resp := request(handler, http.MethodPut, "/api/bookings/path-uid", strings.NewReader(`{"href":"href","name":"Family stay","start":"2026-07-10","end":"2026-07-17"}`))
+	if resp.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d body = %s", resp.Code, resp.Body.String())
+	}
+	assertErrorShape(t, resp)
+	if store.updateCalls != 0 {
+		t.Fatalf("update calls = %d, want 0", store.updateCalls)
 	}
 }
 
@@ -302,16 +330,30 @@ func TestDeleteBookingAllowsEmptyBody(t *testing.T) {
 	}
 }
 
-func TestDeleteBookingAcceptsMetadataBody(t *testing.T) {
+func TestDeleteBookingAcceptsETagBody(t *testing.T) {
+	store := &fakeStore{}
+	handler := testHandler(store)
+
+	resp := request(handler, http.MethodDelete, "/api/bookings/path-uid", strings.NewReader(`{"etag":"etag"}`))
+	if resp.Code != http.StatusNoContent {
+		t.Fatalf("status = %d body = %s", resp.Code, resp.Body.String())
+	}
+	if store.deleteBooking.ETag != "etag" {
+		t.Fatalf("delete booking = %#v", store.deleteBooking)
+	}
+}
+
+func TestDeleteBookingRejectsHref(t *testing.T) {
 	store := &fakeStore{}
 	handler := testHandler(store)
 
 	resp := request(handler, http.MethodDelete, "/api/bookings/path-uid", strings.NewReader(`{"href":"href","etag":"etag"}`))
-	if resp.Code != http.StatusNoContent {
+	if resp.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d body = %s", resp.Code, resp.Body.String())
 	}
-	if store.deleteBooking.Href != "href" || store.deleteBooking.ETag != "etag" {
-		t.Fatalf("delete booking = %#v", store.deleteBooking)
+	assertErrorShape(t, resp)
+	if store.deleteCalls != 0 {
+		t.Fatalf("delete calls = %d, want 0", store.deleteCalls)
 	}
 }
 
