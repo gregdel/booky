@@ -1,6 +1,6 @@
 import { Calendar, type EventApi, type EventInput, type EventSourceFuncArg } from "fullcalendar";
 
-const API_BASE = "/api";
+const API_BASE = `${scriptBasePath()}/api`;
 const EVENT_PALETTE = [
   "#4f6f8f",
   "#4f7b78",
@@ -386,4 +386,14 @@ function requireElement<T extends HTMLElement>(id: string): T {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Request failed";
+}
+
+function scriptBasePath(): string {
+  const scriptURL = import.meta.url;
+  if (!scriptURL) {
+    return "";
+  }
+
+  const path = new URL(scriptURL).pathname;
+  return path.endsWith("/app.js") ? path.slice(0, -"/app.js".length) : "";
 }

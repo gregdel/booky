@@ -36,6 +36,7 @@ cp config-example.yaml config.yaml
 ```yaml
 listen_addr: ":8080"
 app_title: "Vacation House"
+public_path: ""
 
 caldav:
   url: "https://cloud.example.com/remote.php/dav/calendars/family-house/vacation-house/"
@@ -44,6 +45,8 @@ caldav:
 ```
 
 `config.yaml` contains credentials and is ignored by git.
+
+`public_path` is optional. Leave it empty for local development at `/`, or set it to a long unguessable path such as `/REPLACE_WITH_LONG_RANDOM_PATH` when publishing booky behind a reverse proxy.
 
 ## Development
 
@@ -97,27 +100,66 @@ The frontend must be built before the Go binary is built. The `build` command do
 
 ## nginx Reverse Proxy
 
+booky can be exposed only under a long unguessable URL path. This is useful for a public, unauthenticated deployment, but it is not real authentication. Add nginx auth or another access-control layer if you need actual access control.
+
+Use placeholder values in the examples below:
+
+- `booky.example.com`: your public hostname
+- `/REPLACE_WITH_LONG_RANDOM_PATH`: a long random path, for example a UUID
+- `127.0.0.1:8080`: the local address where booky listens
+
+Set `public_path` in `config.yaml` to the same path nginx exposes:
+
+```yaml
+listen_addr: "127.0.0.1:8080"
+app_title: "Vacation House"
+public_path: "/REPLACE_WITH_LONG_RANDOM_PATH"
+```
+
 Example nginx site:
 
 ```nginx
 server {
-    listen 443 ssl http2;
+    listen 80;
+    server_name booky.example.com;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    http2 on;
+    listen 443 ssl;
     server_name booky.example.com;
 
     ssl_certificate /etc/letsencrypt/live/booky.example.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/booky.example.com/privkey.pem;
 
-    location / {
+    location = /REPLACE_WITH_LONG_RANDOM_PATH/ {
+        return 301 /REPLACE_WITH_LONG_RANDOM_PATH;
+    }
+
+    location = /REPLACE_WITH_LONG_RANDOM_PATH {
         proxy_pass http://127.0.0.1:8080;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
     }
+
+    location ^~ /REPLACE_WITH_LONG_RANDOM_PATH/ {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location / {
+        return 404;
+    }
 }
 ```
 
-If you need authentication, add it in nginx or another upstream access-control layer. Do not expose `config.yaml`.
+Keep `proxy_pass` without a trailing slash. booky needs to receive the full public path so it can enforce `public_path` and generate matching asset and API URLs. Do not expose `config.yaml`.
 
 ## Backups
 

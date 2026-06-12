@@ -13,6 +13,7 @@ import (
 type Config struct {
 	ListenAddr string       `yaml:"listen_addr"`
 	AppTitle   string       `yaml:"app_title"`
+	PublicPath string       `yaml:"public_path"`
 	CalDAV     CalDAVConfig `yaml:"caldav"`
 }
 
@@ -49,6 +50,21 @@ func (cfg Config) Validate() error {
 	require(&errs, cfg.CalDAV.User, "caldav.user")
 	require(&errs, cfg.CalDAV.Pass, "caldav.pass")
 
+	if publicPath := strings.TrimSpace(cfg.PublicPath); publicPath != "" {
+		if !strings.HasPrefix(publicPath, "/") {
+			errs = append(errs, errors.New("public_path must start with /"))
+		}
+		if publicPath != "/" && strings.HasSuffix(publicPath, "/") {
+			errs = append(errs, errors.New("public_path must not end with /"))
+		}
+		if strings.Contains(publicPath, "//") {
+			errs = append(errs, errors.New("public_path must not contain //"))
+		}
+		if hasInvalidPublicPathChar(publicPath) {
+			errs = append(errs, errors.New("public_path must be a URL path without query, fragment, whitespace, or control characters"))
+		}
+	}
+
 	if strings.TrimSpace(cfg.CalDAV.URL) != "" {
 		u, err := url.Parse(cfg.CalDAV.URL)
 		if err != nil {
@@ -73,4 +89,10 @@ func require(errs *[]error, value, field string) {
 	if strings.TrimSpace(value) == "" {
 		*errs = append(*errs, fmt.Errorf("%s is required", field))
 	}
+}
+
+func hasInvalidPublicPathChar(value string) bool {
+	return strings.ContainsAny(value, "?#") || strings.ContainsFunc(value, func(r rune) bool {
+		return r <= 0x1f || r == 0x7f || r == ' ' || r == '\t' || r == '\n' || r == '\r'
+	})
 }

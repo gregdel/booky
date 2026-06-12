@@ -17,7 +17,7 @@ import (
 )
 
 func TestHealthAndStatic(t *testing.T) {
-	handler := New(&fakeStore{}, testAssets())
+	handler := New(&fakeStore{}, testAssets(), "")
 
 	resp := request(handler, http.MethodGet, "/api/health", nil)
 	if resp.Code != http.StatusOK {
@@ -31,6 +31,9 @@ func TestHealthAndStatic(t *testing.T) {
 	}
 	if !strings.Contains(resp.Body.String(), "booky") {
 		t.Fatalf("static body = %q", resp.Body.String())
+	}
+	if !strings.Contains(resp.Body.String(), `href="/style.css"`) || !strings.Contains(resp.Body.String(), `src="/app.js"`) {
+		t.Fatalf("static links = %q", resp.Body.String())
 	}
 	for _, header := range []string{"X-Content-Type-Options", "Referrer-Policy", "Content-Security-Policy"} {
 		if resp.Header().Get(header) == "" {
@@ -62,11 +65,50 @@ func TestHealthAndStatic(t *testing.T) {
 	}
 }
 
+func TestPublicPath(t *testing.T) {
+	handler := New(&fakeStore{}, testAssets(), "/REPLACE_WITH_LONG_RANDOM_PATH")
+
+	resp := request(handler, http.MethodGet, "/REPLACE_WITH_LONG_RANDOM_PATH", nil)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("prefixed static status = %d", resp.Code)
+	}
+	if !strings.Contains(resp.Body.String(), `href="/REPLACE_WITH_LONG_RANDOM_PATH/style.css"`) ||
+		!strings.Contains(resp.Body.String(), `src="/REPLACE_WITH_LONG_RANDOM_PATH/app.js"`) {
+		t.Fatalf("prefixed static links = %q", resp.Body.String())
+	}
+
+	resp = request(handler, http.MethodGet, "/REPLACE_WITH_LONG_RANDOM_PATH/", nil)
+	if resp.Code != http.StatusMovedPermanently {
+		t.Fatalf("trailing slash status = %d", resp.Code)
+	}
+	if resp.Header().Get("Location") != "/REPLACE_WITH_LONG_RANDOM_PATH" {
+		t.Fatalf("trailing slash location = %q", resp.Header().Get("Location"))
+	}
+
+	for _, path := range []string{"/REPLACE_WITH_LONG_RANDOM_PATH/api/health", "/REPLACE_WITH_LONG_RANDOM_PATH/app.js", "/REPLACE_WITH_LONG_RANDOM_PATH/style.css", "/REPLACE_WITH_LONG_RANDOM_PATH/index.html"} {
+		t.Run(path, func(t *testing.T) {
+			resp := request(handler, http.MethodGet, path, nil)
+			if resp.Code != http.StatusOK {
+				t.Fatalf("%s status = %d body = %s", path, resp.Code, resp.Body.String())
+			}
+		})
+	}
+
+	for _, path := range []string{"/", "/api/health", "/app.js", "/style.css", "/REPLACE_WITH_LONG_RANDOM_PATH-extra/api/health"} {
+		t.Run(path, func(t *testing.T) {
+			resp := request(handler, http.MethodGet, path, nil)
+			if resp.Code != http.StatusNotFound {
+				t.Fatalf("%s status = %d body = %s", path, resp.Code, resp.Body.String())
+			}
+		})
+	}
+}
+
 func TestListBookings(t *testing.T) {
 	store := &fakeStore{
 		listResult: []booking.Booking{{UID: "uid-1", Name: "Family stay", Start: "2026-07-10", End: "2026-07-17"}},
 	}
-	handler := New(store, testAssets())
+	handler := New(store, testAssets(), "")
 
 	resp := request(handler, http.MethodGet, "/api/bookings?start=2026-07-01&end=2026-08-01", nil)
 	if resp.Code != http.StatusOK {
@@ -83,7 +125,7 @@ func TestListBookings(t *testing.T) {
 }
 
 func TestListBookingsReturnsEmptyArray(t *testing.T) {
-	handler := New(&fakeStore{}, testAssets())
+	handler := New(&fakeStore{}, testAssets(), "")
 
 	resp := request(handler, http.MethodGet, "/api/bookings?start=2026-07-01&end=2026-08-01", nil)
 	if resp.Code != http.StatusOK {
@@ -96,7 +138,7 @@ func TestListBookingsReturnsEmptyArray(t *testing.T) {
 
 func TestListBookingsValidatesQuery(t *testing.T) {
 	store := &fakeStore{}
-	handler := New(store, testAssets())
+	handler := New(store, testAssets(), "")
 
 	resp := request(handler, http.MethodGet, "/api/bookings?start=2026-07-01", nil)
 	if resp.Code != http.StatusBadRequest {
@@ -112,7 +154,7 @@ func TestCreateBookingIgnoresClientMetadata(t *testing.T) {
 	store := &fakeStore{
 		createResult: booking.Booking{UID: "server-uid", Name: "Family stay", Start: "2026-07-10", End: "2026-07-17"},
 	}
-	handler := New(store, testAssets())
+	handler := New(store, testAssets(), "")
 
 	body := `{"uid":"client-uid","href":"href","etag":"etag","name":"Family stay","start":"2026-07-10","end":"2026-07-17","note":"note"}`
 	resp := request(handler, http.MethodPost, "/api/bookings", strings.NewReader(body))
@@ -129,7 +171,7 @@ func TestCreateBookingIgnoresClientMetadata(t *testing.T) {
 
 func TestCreateBookingValidatesBeforeStore(t *testing.T) {
 	store := &fakeStore{}
-	handler := New(store, testAssets())
+	handler := New(store, testAssets(), "")
 
 	resp := request(handler, http.MethodPost, "/api/bookings", strings.NewReader(`{"name":"","start":"2026-07-10","end":"2026-07-17"}`))
 	if resp.Code != http.StatusBadRequest {
@@ -145,7 +187,7 @@ func TestUpdateBookingUsesPathUID(t *testing.T) {
 	store := &fakeStore{
 		updateResult: booking.Booking{UID: "path-uid", Name: "Family stay", Start: "2026-07-10", End: "2026-07-17"},
 	}
-	handler := New(store, testAssets())
+	handler := New(store, testAssets(), "")
 
 	body := `{"uid":"path-uid","href":"href","etag":"etag","name":"Family stay","start":"2026-07-10","end":"2026-07-17"}`
 	resp := request(handler, http.MethodPut, "/api/bookings/path-uid", strings.NewReader(body))
@@ -158,7 +200,7 @@ func TestUpdateBookingUsesPathUID(t *testing.T) {
 }
 
 func TestUpdateRejectsMismatchedUID(t *testing.T) {
-	handler := New(&fakeStore{}, testAssets())
+	handler := New(&fakeStore{}, testAssets(), "")
 	resp := request(handler, http.MethodPut, "/api/bookings/path-uid", strings.NewReader(`{"uid":"other","name":"Family stay","start":"2026-07-10","end":"2026-07-17"}`))
 	if resp.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d body = %s", resp.Code, resp.Body.String())
@@ -168,7 +210,7 @@ func TestUpdateRejectsMismatchedUID(t *testing.T) {
 
 func TestUpdateBookingValidatesBeforeStore(t *testing.T) {
 	store := &fakeStore{}
-	handler := New(store, testAssets())
+	handler := New(store, testAssets(), "")
 
 	resp := request(handler, http.MethodPut, "/api/bookings/path-uid", strings.NewReader(`{"name":"Family stay","start":"2026-07-17","end":"2026-07-10"}`))
 	if resp.Code != http.StatusBadRequest {
@@ -182,7 +224,7 @@ func TestUpdateBookingValidatesBeforeStore(t *testing.T) {
 
 func TestDeleteBookingAllowsEmptyBody(t *testing.T) {
 	store := &fakeStore{}
-	handler := New(store, testAssets())
+	handler := New(store, testAssets(), "")
 
 	resp := request(handler, http.MethodDelete, "/api/bookings/path-uid", nil)
 	if resp.Code != http.StatusNoContent {
@@ -195,7 +237,7 @@ func TestDeleteBookingAllowsEmptyBody(t *testing.T) {
 
 func TestDeleteBookingAcceptsMetadataBody(t *testing.T) {
 	store := &fakeStore{}
-	handler := New(store, testAssets())
+	handler := New(store, testAssets(), "")
 
 	resp := request(handler, http.MethodDelete, "/api/bookings/path-uid", strings.NewReader(`{"href":"href","etag":"etag"}`))
 	if resp.Code != http.StatusNoContent {
@@ -207,7 +249,7 @@ func TestDeleteBookingAcceptsMetadataBody(t *testing.T) {
 }
 
 func TestStrictJSONAndBodyLimit(t *testing.T) {
-	handler := New(&fakeStore{}, testAssets())
+	handler := New(&fakeStore{}, testAssets(), "")
 
 	resp := request(handler, http.MethodPost, "/api/bookings", strings.NewReader(`{"name":"Family stay","start":"2026-07-10","end":"2026-07-17","extra":true}`))
 	if resp.Code != http.StatusBadRequest {
@@ -237,7 +279,7 @@ func TestErrorMappingAndMethods(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			handler := New(&fakeStore{listErr: tc.err}, testAssets())
+			handler := New(&fakeStore{listErr: tc.err}, testAssets(), "")
 			resp := request(handler, http.MethodGet, "/api/bookings?start=2026-07-01&end=2026-08-01", nil)
 			if resp.Code != tc.want {
 				t.Fatalf("status = %d body = %s", resp.Code, resp.Body.String())
@@ -246,7 +288,7 @@ func TestErrorMappingAndMethods(t *testing.T) {
 		})
 	}
 
-	handler := New(&fakeStore{}, testAssets())
+	handler := New(&fakeStore{}, testAssets(), "")
 	resp := request(handler, http.MethodPatch, "/api/bookings", nil)
 	if resp.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("status = %d", resp.Code)
@@ -328,7 +370,7 @@ type ioReader interface {
 
 func testAssets() fs.FS {
 	return fstest.MapFS{
-		"index.html": {Data: []byte("<!doctype html><title>booky</title><h1>booky</h1>")},
+		"index.html": {Data: []byte(`<!doctype html><title>booky</title><link rel="stylesheet" href="{{PUBLIC_PATH}}/style.css"><script src="{{PUBLIC_PATH}}/app.js"></script><h1>booky</h1>`)},
 		"app.js":     {Data: []byte("console.log('ok')")},
 		"style.css":  {Data: []byte("body{}")},
 	}

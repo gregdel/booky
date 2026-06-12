@@ -1,5 +1,6 @@
 listen_addr: ":8080"
 app_title: "Vacation House"
+public_path: ""
 
 caldav:
   url: "https://cloud.example.com/remote.php/dav/calendars/family-house/vacation-house/"

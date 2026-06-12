@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"html"
 	"io"
 	"io/fs"
 	"net/http"
@@ -23,12 +24,14 @@ type Store interface {
 }
 
 type Server struct {
-	store  Store
-	assets fs.FS
+	store      Store
+	assets     fs.FS
+	publicPath string
 }
 
-func New(store Store, assets fs.FS) http.Handler {
-	s := &Server{store: store, assets: assets}
+func New(store Store, assets fs.FS, publicPath string) http.Handler {
+	publicPath = cleanPublicPath(publicPath)
+	s := &Server{store: store, assets: assets, publicPath: publicPath}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/health", s.handleHealth)
@@ -37,9 +40,62 @@ func New(store Store, assets fs.FS) http.Handler {
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "not found")
 	})
-	mux.Handle("/", http.FileServer(http.FS(assets)))
+	mux.HandleFunc("/", s.handleAsset)
 
-	return securityHeaders(mux)
+	return securityHeaders(s.withPublicPath(mux))
+}
+
+func cleanPublicPath(path string) string {
+	path = strings.TrimSpace(path)
+	if path == "/" {
+		return ""
+	}
+	return strings.TrimRight(path, "/")
+}
+
+func (s *Server) withPublicPath(next http.Handler) http.Handler {
+	if s.publicPath == "" {
+		return next
+	}
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == s.publicPath+"/" {
+			http.Redirect(w, r, s.publicPath, http.StatusMovedPermanently)
+			return
+		}
+		if r.URL.Path == s.publicPath {
+			r = r.Clone(r.Context())
+			r.URL.Path = "/"
+			r.URL.RawPath = ""
+			next.ServeHTTP(w, r)
+			return
+		}
+		if strings.HasPrefix(r.URL.Path, s.publicPath+"/") {
+			http.StripPrefix(s.publicPath, next).ServeHTTP(w, r)
+			return
+		}
+		writeError(w, http.StatusNotFound, "not found")
+	})
+}
+
+func (s *Server) handleAsset(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path == "/" || r.URL.Path == "/index.html" {
+		s.handleIndex(w, r)
+		return
+	}
+	http.FileServer(http.FS(s.assets)).ServeHTTP(w, r)
+}
+
+func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
+	index, err := fs.ReadFile(s.assets, "index.html")
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "index not found")
+		return
+	}
+
+	body := strings.ReplaceAll(string(index), "{{PUBLIC_PATH}}", html.EscapeString(s.publicPath))
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = io.WriteString(w, body)
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
