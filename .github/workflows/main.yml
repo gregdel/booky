@@ -1,0 +1,113 @@
+name: Build
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check out code
+      uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+    - name: Set up Go
+      uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+      with:
+        go-version-file: go.mod
+        cache: true
+
+    - name: Set up Bun
+      uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      with:
+        bun-version-file: package.json
+
+    - name: Test
+      run: sh scripts/booky.sh release-check
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    steps:
+    - name: Check out code
+      uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+    - name: Set up Go
+      uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+      with:
+        go-version-file: go.mod
+        cache: true
+
+    - name: Set up Bun
+      uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      with:
+        bun-version-file: package.json
+
+    - name: Build
+      run: sh scripts/booky.sh build
+
+    - name: Package artifact
+      shell: sh
+      run: |
+        mkdir -p builds
+        cp bin/booky builds/booky_linux_amd64
+        sha256sum builds/booky_linux_amd64 > builds/booky_linux_amd64.sha256sum
+
+    - name: Attest artifact
+      uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4
+      with:
+        subject-path: builds/booky_linux_amd64
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      with:
+        name: artifacts
+        path: builds/*
+
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    if: github.ref == 'refs/heads/master'
+    needs:
+    - test
+    - build
+    steps:
+    - name: Check out code
+      uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+    - name: Create tag
+      id: tag
+      shell: sh
+      run: echo "tag=$(date -u '+%Y%m%d-%H%M%S')" >> "$GITHUB_OUTPUT"
+
+    - name: Download artifacts
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+      with:
+        name: artifacts
+        path: artifacts
+
+    - name: Release
+      uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3
+      with:
+        tag_name: ${{ steps.tag.outputs.tag }}
+        target_commitish: ${{ github.sha }}
+        name: ${{ steps.tag.outputs.tag }}
+        make_latest: true
+        files: artifacts/*
