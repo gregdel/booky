@@ -270,13 +270,36 @@ func TestUpdateBookingUsesPathUID(t *testing.T) {
 	}
 	handler := testHandler(store)
 
-	body := `{"uid":"path-uid","etag":"etag","name":"Family stay","start":"2026-07-10","end":"2026-07-17"}`
+	body := `{"uid":"path-uid","etag":"  etag  ","name":"Family stay","start":"2026-07-10","end":"2026-07-17"}`
 	resp := request(handler, http.MethodPut, "/api/bookings/path-uid", strings.NewReader(body))
 	if resp.Code != http.StatusOK {
 		t.Fatalf("status = %d body = %s", resp.Code, resp.Body.String())
 	}
 	if store.updateBooking.UID != "path-uid" || store.updateBooking.ETag != "etag" {
 		t.Fatalf("update booking = %#v", store.updateBooking)
+	}
+}
+
+func TestUpdateBookingRequiresETag(t *testing.T) {
+	tests := map[string]string{
+		"missing": `{"name":"Family stay","start":"2026-07-10","end":"2026-07-17"}`,
+		"blank":   `{"etag":"   ","name":"Family stay","start":"2026-07-10","end":"2026-07-17"}`,
+	}
+
+	for name, body := range tests {
+		t.Run(name, func(t *testing.T) {
+			store := &fakeStore{}
+			handler := testHandler(store)
+
+			resp := request(handler, http.MethodPut, "/api/bookings/path-uid", strings.NewReader(body))
+			if resp.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d body = %s", resp.Code, resp.Body.String())
+			}
+			assertErrorMessage(t, resp, "etag is required")
+			if store.updateCalls != 0 {
+				t.Fatalf("update calls = %d, want 0", store.updateCalls)
+			}
+		})
 	}
 }
 
@@ -307,7 +330,7 @@ func TestUpdateBookingValidatesBeforeStore(t *testing.T) {
 	store := &fakeStore{}
 	handler := testHandler(store)
 
-	resp := request(handler, http.MethodPut, "/api/bookings/path-uid", strings.NewReader(`{"name":"Family stay","start":"2026-07-17","end":"2026-07-10"}`))
+	resp := request(handler, http.MethodPut, "/api/bookings/path-uid", strings.NewReader(`{"etag":"etag","name":"Family stay","start":"2026-07-17","end":"2026-07-10"}`))
 	if resp.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d body = %s", resp.Code, resp.Body.String())
 	}
@@ -317,16 +340,27 @@ func TestUpdateBookingValidatesBeforeStore(t *testing.T) {
 	}
 }
 
-func TestDeleteBookingAllowsEmptyBody(t *testing.T) {
-	store := &fakeStore{}
-	handler := testHandler(store)
-
-	resp := request(handler, http.MethodDelete, "/api/bookings/path-uid", nil)
-	if resp.Code != http.StatusNoContent {
-		t.Fatalf("status = %d body = %s", resp.Code, resp.Body.String())
+func TestDeleteBookingRequiresETag(t *testing.T) {
+	tests := map[string]ioReader{
+		"empty":   nil,
+		"missing": strings.NewReader(`{}`),
+		"blank":   strings.NewReader(`{"etag":"   "}`),
 	}
-	if store.deleteBooking.UID != "path-uid" {
-		t.Fatalf("delete booking = %#v", store.deleteBooking)
+
+	for name, body := range tests {
+		t.Run(name, func(t *testing.T) {
+			store := &fakeStore{}
+			handler := testHandler(store)
+
+			resp := request(handler, http.MethodDelete, "/api/bookings/path-uid", body)
+			if resp.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d body = %s", resp.Code, resp.Body.String())
+			}
+			assertErrorMessage(t, resp, "etag is required")
+			if store.deleteCalls != 0 {
+				t.Fatalf("delete calls = %d, want 0", store.deleteCalls)
+			}
+		})
 	}
 }
 
@@ -334,7 +368,7 @@ func TestDeleteBookingAcceptsETagBody(t *testing.T) {
 	store := &fakeStore{}
 	handler := testHandler(store)
 
-	resp := request(handler, http.MethodDelete, "/api/bookings/path-uid", strings.NewReader(`{"etag":"etag"}`))
+	resp := request(handler, http.MethodDelete, "/api/bookings/path-uid", strings.NewReader(`{"etag":"  etag  "}`))
 	if resp.Code != http.StatusNoContent {
 		t.Fatalf("status = %d body = %s", resp.Code, resp.Body.String())
 	}
@@ -355,6 +389,25 @@ func TestDeleteBookingRejectsHref(t *testing.T) {
 	if store.deleteCalls != 0 {
 		t.Fatalf("delete calls = %d, want 0", store.deleteCalls)
 	}
+}
+
+func TestMutationConflictsReturnConflict(t *testing.T) {
+	handler := testHandler(&fakeStore{
+		updateErr: caldav.ErrConflict,
+		deleteErr: caldav.ErrConflict,
+	})
+
+	resp := request(handler, http.MethodPut, "/api/bookings/path-uid", strings.NewReader(`{"etag":"etag","name":"Family stay","start":"2026-07-10","end":"2026-07-17"}`))
+	if resp.Code != http.StatusConflict {
+		t.Fatalf("update status = %d body = %s", resp.Code, resp.Body.String())
+	}
+	assertErrorShape(t, resp)
+
+	resp = request(handler, http.MethodDelete, "/api/bookings/path-uid", strings.NewReader(`{"etag":"etag"}`))
+	if resp.Code != http.StatusConflict {
+		t.Fatalf("delete status = %d body = %s", resp.Code, resp.Body.String())
+	}
+	assertErrorShape(t, resp)
 }
 
 func TestStrictJSONAndBodyLimit(t *testing.T) {
@@ -564,5 +617,16 @@ func assertErrorShape(t *testing.T, resp *httptest.ResponseRecorder) {
 	}
 	if decoded["error"] == "" {
 		t.Fatalf("error response missing message: %v", decoded)
+	}
+}
+
+func assertErrorMessage(t *testing.T, resp *httptest.ResponseRecorder, want string) {
+	t.Helper()
+	var decoded map[string]string
+	if err := json.Unmarshal(resp.Body.Bytes(), &decoded); err != nil {
+		t.Fatalf("decode error response: %v; body = %s", err, resp.Body.String())
+	}
+	if decoded["error"] != want {
+		t.Fatalf("error = %q, want %q", decoded["error"], want)
 	}
 }

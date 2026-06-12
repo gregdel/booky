@@ -7,6 +7,15 @@ import {
   inclusiveLastDayToExclusiveEnd,
   localDateString,
 } from "./dates";
+import {
+  ApiError,
+  deleteBookingPayload,
+  errorMessage,
+  mutationFailureMessage,
+  shouldRefetchAfterMutationFailure,
+  updateBookingPayload,
+  type Booking,
+} from "./bookings";
 
 const API_BASE = `${scriptBasePath()}/api`;
 const EVENT_PALETTE = [
@@ -21,15 +30,6 @@ const EVENT_PALETTE = [
 ] as const;
 const EVENT_TEXT_COLOR = "#ffffff";
 const LAST_DAY_ERROR = "Last day must be on or after start.";
-
-type Booking = {
-  uid?: string;
-  etag?: string;
-  name: string;
-  start: string;
-  end: string;
-  note?: string;
-};
 
 type BookingEvent = EventApi & {
   extendedProps: {
@@ -169,13 +169,13 @@ async function moveBooking(event: BookingEvent, revert: () => void): Promise<voi
   try {
     const updated = await apiFetch<Booking>(`/bookings/${encodeURIComponent(booking.uid)}`, {
       method: "PUT",
-      body: JSON.stringify(booking),
+      body: JSON.stringify(updateBookingPayload(booking, booking.uid)),
     });
     updateEvent(event, updated);
     setStatus("Booking saved");
   } catch (error) {
     revert();
-    setStatus(errorMessage(error), true);
+    setStatus(mutationFailureMessage("save", error), true);
     calendar.refetchEvents();
   }
 }
@@ -211,13 +211,16 @@ async function saveBooking(): Promise<void> {
     setBusy(true);
     await apiFetch<Booking>(path, {
       method: isEdit ? "PUT" : "POST",
-      body: JSON.stringify(isEdit ? { ...booking, uid: activeBooking!.uid } : booking),
+      body: JSON.stringify(isEdit ? updateBookingPayload(booking, activeBooking!.uid!) : booking),
     });
     closeDialog();
     setStatus("Booking saved");
     calendar.refetchEvents();
   } catch (error) {
-    formError.textContent = errorMessage(error);
+    formError.textContent = isEdit ? mutationFailureMessage("save", error) : errorMessage(error);
+    if (isEdit && shouldRefetchAfterMutationFailure(error)) {
+      calendar.refetchEvents();
+    }
   } finally {
     setBusy(false);
   }
@@ -233,16 +236,17 @@ async function deleteActiveBooking(): Promise<void> {
     setBusy(true);
     await apiFetch<null>(`/bookings/${encodeURIComponent(activeBooking.uid)}`, {
       method: "DELETE",
-      body: JSON.stringify({
-        etag: activeBooking.etag || "",
-      }),
+      body: JSON.stringify(deleteBookingPayload(activeBooking)),
     });
     calendar.getEventById(activeBooking.uid)?.remove();
     closeDialog();
     setStatus("Booking deleted");
     calendar.refetchEvents();
   } catch (error) {
-    formError.textContent = errorMessage(error);
+    formError.textContent = mutationFailureMessage("delete", error);
+    if (shouldRefetchAfterMutationFailure(error)) {
+      calendar.refetchEvents();
+    }
   } finally {
     setBusy(false);
   }
@@ -334,7 +338,7 @@ async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> 
 
   const payload = await readJSON(response);
   if (!response.ok) {
-    throw new Error(payload.error || `Request failed with HTTP ${response.status}`);
+    throw new ApiError(response.status, payload.error || `Request failed with HTTP ${response.status}`);
   }
   return payload as T;
 }
@@ -400,10 +404,6 @@ function requireElement<T extends HTMLElement>(id: string): T {
     throw new Error(`Missing element #${id}`);
   }
   return element as T;
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "Request failed";
 }
 
 function scriptBasePath(): string {

@@ -237,7 +237,7 @@ func TestUpdateUsesUIDTargetIfMatchAndRefreshesETag(t *testing.T) {
 	client := newTestClient(t, server.URL)
 	got, err := client.Update(context.Background(), booking.Booking{
 		UID:   "booky-uid",
-		ETag:  `"etag-old"`,
+		ETag:  `  "etag-old"  `,
 		Name:  "Family stay",
 		Start: "2026-07-10",
 		End:   "2026-07-17",
@@ -250,22 +250,20 @@ func TestUpdateUsesUIDTargetIfMatchAndRefreshesETag(t *testing.T) {
 	}
 }
 
-func TestUpdateUsesUIDTargetAndOmitsEmptyIfMatch(t *testing.T) {
+func TestUpdateRequiresETagBeforeNetwork(t *testing.T) {
+	calls := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/remote.php/dav/calendars/family-house/vacation-house/booky-uid.ics" {
-			t.Fatalf("path = %s", r.URL.Path)
-		}
-		if got := r.Header.Get("If-Match"); got != "" {
-			t.Fatalf("If-Match = %q, want empty", got)
-		}
-		w.WriteHeader(http.StatusOK)
+		calls++
 	}))
 	defer server.Close()
 
 	client := newTestClient(t, server.URL)
 	_, err := client.Update(context.Background(), booking.Booking{UID: "booky-uid", Name: "Family stay", Start: "2026-07-10", End: "2026-07-17"})
-	if err != nil {
-		t.Fatalf("Update returned error: %v", err)
+	if err == nil || err.Error() != "etag is required" {
+		t.Fatalf("err = %v, want etag is required", err)
+	}
+	if calls != 0 {
+		t.Fatalf("network calls = %d, want 0", calls)
 	}
 }
 
@@ -279,7 +277,7 @@ func TestUpdateEscapesUIDFallbackAsPathSegment(t *testing.T) {
 	defer server.Close()
 
 	client := newTestClient(t, server.URL)
-	_, err := client.Update(context.Background(), booking.Booking{UID: "booky/uid with space", Name: "Family stay", Start: "2026-07-10", End: "2026-07-17"})
+	_, err := client.Update(context.Background(), booking.Booking{UID: "booky/uid with space", ETag: `"etag-old"`, Name: "Family stay", Start: "2026-07-10", End: "2026-07-17"})
 	if err != nil {
 		t.Fatalf("Update returned error: %v", err)
 	}
@@ -293,7 +291,7 @@ func TestUpdateValidatesBeforeNetwork(t *testing.T) {
 	defer server.Close()
 
 	client := newTestClient(t, server.URL)
-	_, err := client.Update(context.Background(), booking.Booking{UID: "booky-uid", Name: "", Start: "2026-07-10", End: "2026-07-17"})
+	_, err := client.Update(context.Background(), booking.Booking{UID: "booky-uid", ETag: `"etag-old"`, Name: "", Start: "2026-07-10", End: "2026-07-17"})
 	if err == nil {
 		t.Fatal("Update returned nil error")
 	}
@@ -309,7 +307,7 @@ func TestUpdateMapsStaleETag(t *testing.T) {
 	defer server.Close()
 
 	client := newTestClient(t, server.URL)
-	_, err := client.Update(context.Background(), booking.Booking{UID: "booky-uid", Name: "Family stay", Start: "2026-07-10", End: "2026-07-17"})
+	_, err := client.Update(context.Background(), booking.Booking{UID: "booky-uid", ETag: `"etag-old"`, Name: "Family stay", Start: "2026-07-10", End: "2026-07-17"})
 	if !errors.Is(err, ErrConflict) {
 		t.Fatalf("err = %v, want ErrConflict", err)
 	}
@@ -343,7 +341,7 @@ func TestDeleteUsesOptionalIfMatchAndMapsStatuses(t *testing.T) {
 			defer server.Close()
 
 			client := newTestClient(t, server.URL)
-			err := client.Delete(context.Background(), booking.Booking{UID: "booky-uid", ETag: `"etag-old"`})
+			err := client.Delete(context.Background(), booking.Booking{UID: "booky-uid", ETag: `  "etag-old"  `})
 			if tc.want == nil && err != nil {
 				t.Fatalf("Delete returned error: %v", err)
 			}
@@ -359,6 +357,23 @@ func TestDeleteRequiresTarget(t *testing.T) {
 	err := client.Delete(context.Background(), booking.Booking{})
 	if err == nil {
 		t.Fatal("Delete returned nil error")
+	}
+}
+
+func TestDeleteRequiresETagBeforeNetwork(t *testing.T) {
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server.URL)
+	err := client.Delete(context.Background(), booking.Booking{UID: "booky-uid"})
+	if err == nil || err.Error() != "etag is required" {
+		t.Fatalf("err = %v, want etag is required", err)
+	}
+	if calls != 0 {
+		t.Fatalf("network calls = %d, want 0", calls)
 	}
 }
 

@@ -134,14 +134,19 @@ func (c *Client) Create(ctx context.Context, b booking.Booking) (booking.Booking
 
 func (c *Client) Update(ctx context.Context, b booking.Booking) (booking.Booking, error) {
 	b = b.Normalized()
-	if err := b.Validate(); err != nil {
-		return booking.Booking{}, err
-	}
-
 	target, err := c.mutationURL(b)
 	if err != nil {
 		return booking.Booking{}, err
 	}
+	etag, err := booking.NormalizeETag(b.ETag)
+	if err != nil {
+		return booking.Booking{}, err
+	}
+	b.ETag = etag
+	if err := b.Validate(); err != nil {
+		return booking.Booking{}, err
+	}
+
 	body, err := ical.MarshalCalendar(b, c.now())
 	if err != nil {
 		return booking.Booking{}, err
@@ -151,9 +156,7 @@ func (c *Client) Update(ctx context.Context, b booking.Booking) (booking.Booking
 		return booking.Booking{}, err
 	}
 	req.Header.Set("Content-Type", "text/calendar; charset=utf-8")
-	if b.ETag != "" {
-		req.Header.Set("If-Match", b.ETag)
-	}
+	req.Header.Set("If-Match", b.ETag)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -175,13 +178,15 @@ func (c *Client) Delete(ctx context.Context, b booking.Booking) error {
 	if err != nil {
 		return err
 	}
+	etag, err := booking.NormalizeETag(b.ETag)
+	if err != nil {
+		return err
+	}
 	req, err := c.request(ctx, http.MethodDelete, target, nil)
 	if err != nil {
 		return err
 	}
-	if b.ETag != "" {
-		req.Header.Set("If-Match", b.ETag)
-	}
+	req.Header.Set("If-Match", etag)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

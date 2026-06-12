@@ -252,10 +252,15 @@ func (s *Server) updateBooking(w http.ResponseWriter, r *http.Request, uid strin
 		writeError(w, http.StatusBadRequest, "uid does not match path")
 		return
 	}
+	etag, err := booking.NormalizeETag(req.ETag)
+	if err != nil {
+		writeMappedError(w, err)
+		return
+	}
 
 	b := booking.Booking{
 		UID:   uid,
-		ETag:  req.ETag,
+		ETag:  etag,
 		Name:  req.Name,
 		Start: req.Start,
 		End:   req.End,
@@ -280,8 +285,13 @@ func (s *Server) deleteBooking(w http.ResponseWriter, r *http.Request, uid strin
 		writeDecodeError(w, err)
 		return
 	}
+	etag, err := booking.NormalizeETag(req.ETag)
+	if err != nil {
+		writeMappedError(w, err)
+		return
+	}
 
-	if err := s.store.Delete(r.Context(), booking.Booking{UID: uid, ETag: req.ETag}); err != nil {
+	if err := s.store.Delete(r.Context(), booking.Booking{UID: uid, ETag: etag}); err != nil {
 		writeMappedError(w, err)
 		return
 	}

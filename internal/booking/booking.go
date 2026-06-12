@@ -73,6 +73,14 @@ func (b Booking) Validate() error {
 	return errors.Join(errs...)
 }
 
+func NormalizeETag(value string) (string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", errors.New("etag is required")
+	}
+	return value, nil
+}
+
 func (r QueryRange) Validate() error {
 	var errs []error
 
