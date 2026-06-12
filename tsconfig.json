@@ -8,5 +8,6 @@
     "lib": ["DOM", "ES2022"],
     "skipLibCheck": true
   },
-  "include": ["web/src/**/*.ts"]
+  "include": ["web/src/**/*.ts"],
+  "exclude": ["web/src/**/*.test.ts"]
 }

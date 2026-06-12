@@ -1,4 +1,12 @@
 import { Calendar, type EventApi, type EventInput, type EventSourceFuncArg } from "fullcalendar";
+import {
+  addDateObjectDays,
+  calendarExclusiveEndToStoredEnd,
+  dateOnly,
+  exclusiveEndToInclusiveLastDay,
+  inclusiveLastDayToExclusiveEnd,
+  localDateString,
+} from "./dates";
 
 const API_BASE = `${scriptBasePath()}/api`;
 const EVENT_PALETTE = [
@@ -12,6 +20,7 @@ const EVENT_PALETTE = [
   "#4f7460",
 ] as const;
 const EVENT_TEXT_COLOR = "#ffffff";
+const LAST_DAY_ERROR = "Last day must be on or after start.";
 
 type Booking = {
   uid?: string;
@@ -61,15 +70,17 @@ document.addEventListener("DOMContentLoaded", () => {
     displayEventTime: false,
     events: loadEvents,
     select: (selection) => {
-      openDialog({
-        name: "",
-        start: dateOnly(selection.startStr),
-        end: dateOnly(selection.endStr),
-      });
+      openDialog(
+        bookingToDialogValues({
+          name: "",
+          start: dateOnly(selection.startStr),
+          end: calendarExclusiveEndToStoredEnd(selection.endStr),
+        }),
+      );
       calendar.unselect();
     },
     eventClick: (info) => {
-      openDialog(eventToBooking(info.event as BookingEvent));
+      openDialog(bookingToDialogValues(eventToStoredBooking(info.event as BookingEvent)));
     },
     eventDrop: async (info) => {
       await moveBooking(info.event as BookingEvent, info.revert);
@@ -91,8 +102,7 @@ document.addEventListener("DOMContentLoaded", () => {
 function bindControls(): void {
   addButton.addEventListener("click", () => {
     const today = localDateString(new Date());
-    const tomorrow = addDays(today, 1);
-    openDialog({ name: "", start: today, end: tomorrow });
+    openDialog({ name: "", start: today, end: today });
   });
 
   closeButton.addEventListener("click", closeDialog);
@@ -106,8 +116,12 @@ function bindControls(): void {
     void saveBooking();
   });
 
+  startInput.addEventListener("input", updateLastDayConstraint);
+  endInput.addEventListener("input", updateLastDayConstraint);
+
   dialog.addEventListener("close", () => {
     formError.textContent = "";
+    endInput.setCustomValidity("");
   });
 }
 
@@ -148,7 +162,7 @@ function bookingToEvent(booking: Booking): EventInput {
 }
 
 async function moveBooking(event: BookingEvent, revert: () => void): Promise<void> {
-  const booking = eventToBooking(event);
+  const booking = eventToStoredBooking(event);
   if (!booking.uid) {
     revert();
     setStatus("Booking is missing an id", true);
@@ -178,6 +192,7 @@ function openDialog(booking: Booking): void {
   noteInput.value = booking.note || "";
   deleteButton.hidden = !booking.uid;
   formError.textContent = "";
+  updateLastDayConstraint();
   dialog.showModal();
   nameInput.focus();
 }
@@ -188,13 +203,16 @@ function closeDialog(): void {
 
 async function saveBooking(): Promise<void> {
   clearFormError();
+  if (!validateLastDay()) {
+    return;
+  }
   const booking = formBooking();
   const isEdit = Boolean(activeBooking?.uid);
   const path = isEdit ? `/bookings/${encodeURIComponent(activeBooking!.uid!)}` : "/bookings";
 
   try {
     setBusy(true);
-    const saved = await apiFetch<Booking>(path, {
+    await apiFetch<Booking>(path, {
       method: isEdit ? "PUT" : "POST",
       body: JSON.stringify(isEdit ? { ...booking, uid: activeBooking!.uid } : booking),
     });
@@ -238,7 +256,7 @@ function formBooking(): Booking {
   const booking: Booking = {
     name: nameInput.value.trim(),
     start: startInput.value,
-    end: endInput.value,
+    end: inclusiveLastDayToExclusiveEnd(endInput.value),
     note: noteInput.value.trim(),
   };
 
@@ -250,15 +268,24 @@ function formBooking(): Booking {
   return booking;
 }
 
-function eventToBooking(event: BookingEvent): Booking {
+function eventToStoredBooking(event: BookingEvent): Booking {
   return {
     uid: event.id,
     href: event.extendedProps.href || "",
     etag: event.extendedProps.etag || "",
     name: event.title,
     start: dateOnly(event.startStr || localDateString(requiredDate(event.start))),
-    end: dateOnly(event.endStr || localDateString(addDateObjectDays(requiredDate(event.start), 1))),
+    end: calendarExclusiveEndToStoredEnd(
+      event.endStr || localDateString(addDateObjectDays(requiredDate(event.start), 1)),
+    ),
     note: event.extendedProps.note || "",
+  };
+}
+
+function bookingToDialogValues(booking: Booking): Booking {
+  return {
+    ...booking,
+    end: exclusiveEndToInclusiveLastDay(booking.end),
   };
 }
 
@@ -345,28 +372,26 @@ function setBusy(isBusy: boolean): void {
   deleteButton.disabled = isBusy;
 }
 
-function dateOnly(value: string): string {
-  return value.slice(0, 10);
+function updateLastDayConstraint(): void {
+  endInput.min = startInput.value;
+  if (!startInput.value || !endInput.value || endInput.value >= startInput.value) {
+    endInput.setCustomValidity("");
+    if (formError.textContent === LAST_DAY_ERROR) {
+      formError.textContent = "";
+    }
+    return;
+  }
+  endInput.setCustomValidity(LAST_DAY_ERROR);
 }
 
-function localDateString(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-function addDays(value: string, days: number): string {
-  const [year, month, day] = value.split("-").map(Number);
-  const date = new Date(year, month - 1, day);
-  date.setDate(date.getDate() + days);
-  return localDateString(date);
-}
-
-function addDateObjectDays(value: Date, days: number): Date {
-  const date = new Date(value.getTime());
-  date.setDate(date.getDate() + days);
-  return date;
+function validateLastDay(): boolean {
+  updateLastDayConstraint();
+  if (!startInput.value || !endInput.value || endInput.value >= startInput.value) {
+    return true;
+  }
+  formError.textContent = LAST_DAY_ERROR;
+  endInput.reportValidity();
+  return false;
 }
 
 function requiredDate(value: Date | null): Date {
