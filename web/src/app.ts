@@ -1,6 +1,17 @@
 import { Calendar, type EventApi, type EventInput, type EventSourceFuncArg } from "fullcalendar";
 
 const API_BASE = "/api";
+const EVENT_PALETTE = [
+  "#4f6f8f",
+  "#4f7b78",
+  "#5b6f50",
+  "#7a6348",
+  "#7a5a73",
+  "#646f9c",
+  "#8a5b48",
+  "#4f7460",
+] as const;
+const EVENT_TEXT_COLOR = "#ffffff";
 
 type Booking = {
   uid?: string;
@@ -127,6 +138,7 @@ function bookingToEvent(booking: Booking): EventInput {
     start: booking.start,
     end: booking.end,
     allDay: true,
+    ...eventColorsForName(booking.name),
     extendedProps: {
       href: booking.href || "",
       etag: booking.etag || "",
@@ -251,12 +263,42 @@ function eventToBooking(event: BookingEvent): Booking {
 }
 
 function updateEvent(event: BookingEvent, booking: Booking): void {
+  const colors = eventColorsForName(booking.name);
   event.setProp("title", booking.name);
+  event.setProp("backgroundColor", colors.backgroundColor);
+  event.setProp("borderColor", colors.borderColor);
+  event.setProp("textColor", colors.textColor);
   event.setStart(booking.start);
   event.setEnd(booking.end);
   event.setExtendedProp("href", booking.href || "");
   event.setExtendedProp("etag", booking.etag || "");
   event.setExtendedProp("note", booking.note || "");
+}
+
+function eventColorsForName(name: string): {
+  backgroundColor: string;
+  borderColor: string;
+  textColor: string;
+} {
+  const color = EVENT_PALETTE[hashString(normalizedColorKey(name)) % EVENT_PALETTE.length];
+  return {
+    backgroundColor: color,
+    borderColor: color,
+    textColor: EVENT_TEXT_COLOR,
+  };
+}
+
+function normalizedColorKey(name: string): string {
+  return name.normalize("NFKC").trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+function hashString(value: string): number {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < value.length; i += 1) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return hash >>> 0;
 }
 
 async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
