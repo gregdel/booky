@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
@@ -392,22 +393,26 @@ func TestDeleteBookingRejectsHref(t *testing.T) {
 }
 
 func TestMutationConflictsReturnConflict(t *testing.T) {
-	handler := testHandler(&fakeStore{
-		updateErr: caldav.ErrConflict,
-		deleteErr: caldav.ErrConflict,
-	})
+	logs := &captureLogger{}
+	handler := testHandlerWithLogger(&fakeStore{
+		updateErr: fmt.Errorf("%w: PUT update returned 412", caldav.ErrConflict),
+		deleteErr: fmt.Errorf("%w: DELETE returned 412", caldav.ErrConflict),
+	}, logs)
 
 	resp := request(handler, http.MethodPut, "/api/bookings/path-uid", strings.NewReader(`{"etag":"etag","name":"Family stay","start":"2026-07-10","end":"2026-07-17"}`))
 	if resp.Code != http.StatusConflict {
 		t.Fatalf("update status = %d body = %s", resp.Code, resp.Body.String())
 	}
-	assertErrorShape(t, resp)
+	assertErrorMessage(t, resp, "booking conflict")
+	assertBodyDoesNotContain(t, resp, "PUT update", "412", "caldav")
 
 	resp = request(handler, http.MethodDelete, "/api/bookings/path-uid", strings.NewReader(`{"etag":"etag"}`))
 	if resp.Code != http.StatusConflict {
 		t.Fatalf("delete status = %d body = %s", resp.Code, resp.Body.String())
 	}
-	assertErrorShape(t, resp)
+	assertErrorMessage(t, resp, "booking conflict")
+	assertBodyDoesNotContain(t, resp, "DELETE", "412", "caldav")
+	assertLogContains(t, logs, "update booking failed", "PUT update returned 412", "delete booking failed", "DELETE returned 412")
 }
 
 func TestStrictJSONAndBodyLimit(t *testing.T) {
@@ -429,24 +434,28 @@ func TestStrictJSONAndBodyLimit(t *testing.T) {
 
 func TestErrorMappingAndMethods(t *testing.T) {
 	tests := []struct {
-		name string
-		err  error
-		want int
+		name        string
+		err         error
+		wantStatus  int
+		wantMessage string
 	}{
-		{name: "not found", err: caldav.ErrNotFound, want: http.StatusNotFound},
-		{name: "conflict", err: caldav.ErrConflict, want: http.StatusConflict},
-		{name: "upstream", err: caldav.ErrUpstream, want: http.StatusBadGateway},
-		{name: "validation", err: errors.New("bad request"), want: http.StatusBadRequest},
+		{name: "not found", err: fmt.Errorf("%w: REPORT response returned 404", caldav.ErrNotFound), wantStatus: http.StatusNotFound, wantMessage: "not found"},
+		{name: "conflict", err: fmt.Errorf("%w: REPORT response returned 409", caldav.ErrConflict), wantStatus: http.StatusConflict, wantMessage: "booking conflict"},
+		{name: "upstream", err: fmt.Errorf("%w: REPORT returned 500 for https://calendar.example/private", caldav.ErrUpstream), wantStatus: http.StatusBadGateway, wantMessage: "calendar service unavailable"},
+		{name: "unknown", err: errors.New("database password leaked"), wantStatus: http.StatusInternalServerError, wantMessage: "internal server error"},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			handler := testHandler(&fakeStore{listErr: tc.err})
+			logs := &captureLogger{}
+			handler := testHandlerWithLogger(&fakeStore{listErr: tc.err}, logs)
 			resp := request(handler, http.MethodGet, "/api/bookings?start=2026-07-01&end=2026-08-01", nil)
-			if resp.Code != tc.want {
+			if resp.Code != tc.wantStatus {
 				t.Fatalf("status = %d body = %s", resp.Code, resp.Body.String())
 			}
-			assertErrorShape(t, resp)
+			assertErrorMessage(t, resp, tc.wantMessage)
+			assertBodyDoesNotContain(t, resp, "REPORT", "500", "409", "calendar.example", "database password leaked", "caldav:")
+			assertLogContains(t, logs, "list bookings failed", tc.err.Error())
 		})
 	}
 
@@ -462,6 +471,48 @@ func TestErrorMappingAndMethods(t *testing.T) {
 		t.Fatalf("status = %d", resp.Code)
 	}
 	assertErrorShape(t, resp)
+}
+
+func TestClientInputErrorsRemainDetailed(t *testing.T) {
+	handler := testHandler(&fakeStore{})
+
+	resp := request(handler, http.MethodGet, "/api/bookings?start=2026-07-01", nil)
+	if resp.Code != http.StatusBadRequest {
+		t.Fatalf("query status = %d body = %s", resp.Code, resp.Body.String())
+	}
+	assertErrorContains(t, resp, "end: must be YYYY-MM-DD")
+
+	resp = request(handler, http.MethodPut, "/api/bookings/path-uid", strings.NewReader(`{"name":"Family stay","start":"2026-07-10","end":"2026-07-17"}`))
+	if resp.Code != http.StatusBadRequest {
+		t.Fatalf("etag status = %d body = %s", resp.Code, resp.Body.String())
+	}
+	assertErrorMessage(t, resp, "etag is required")
+
+	resp = request(handler, http.MethodPost, "/api/bookings", strings.NewReader(`{"name":"Family stay","start":"2026-07-10","end":"2026-07-17","extra":true}`))
+	if resp.Code != http.StatusBadRequest {
+		t.Fatalf("unknown field status = %d body = %s", resp.Code, resp.Body.String())
+	}
+	assertErrorContains(t, resp, `unknown field "extra"`)
+
+	large := bytes.NewBufferString(`{"name":"` + strings.Repeat("a", maxJSONBody) + `"}`)
+	resp = request(handler, http.MethodPost, "/api/bookings", large)
+	if resp.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("large body status = %d body = %s", resp.Code, resp.Body.String())
+	}
+	assertErrorMessage(t, resp, "request body too large")
+}
+
+func TestIndexReadFailureIsSanitizedAndLogged(t *testing.T) {
+	logs := &captureLogger{}
+	handler := newWithLogger(&fakeStore{}, fstest.MapFS{}, "", "booky", logs)
+
+	resp := request(handler, http.MethodGet, "/", nil)
+	if resp.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d body = %s", resp.Code, resp.Body.String())
+	}
+	assertErrorMessage(t, resp, "internal server error")
+	assertBodyDoesNotContain(t, resp, "index.html", "file does not exist")
+	assertLogContains(t, logs, "read index failed", "index.html")
 }
 
 type fakeStore struct {
@@ -546,6 +597,19 @@ func testHandler(store Store) http.Handler {
 	return New(store, testAssets(), "", "booky")
 }
 
+func testHandlerWithLogger(store Store, l logger) http.Handler {
+	return newWithLogger(store, testAssets(), "", "booky", l)
+}
+
+type captureLogger struct {
+	bytes.Buffer
+}
+
+func (l *captureLogger) Printf(format string, args ...any) {
+	_, _ = fmt.Fprintf(&l.Buffer, format, args...)
+	_ = l.WriteByte('\n')
+}
+
 type webManifest struct {
 	Name            string         `json:"name"`
 	ShortName       string         `json:"short_name"`
@@ -628,5 +692,38 @@ func assertErrorMessage(t *testing.T, resp *httptest.ResponseRecorder, want stri
 	}
 	if decoded["error"] != want {
 		t.Fatalf("error = %q, want %q", decoded["error"], want)
+	}
+}
+
+func assertErrorContains(t *testing.T, resp *httptest.ResponseRecorder, wants ...string) {
+	t.Helper()
+	var decoded map[string]string
+	if err := json.Unmarshal(resp.Body.Bytes(), &decoded); err != nil {
+		t.Fatalf("decode error response: %v; body = %s", err, resp.Body.String())
+	}
+	for _, want := range wants {
+		if !strings.Contains(decoded["error"], want) {
+			t.Fatalf("error = %q, want to contain %q", decoded["error"], want)
+		}
+	}
+}
+
+func assertBodyDoesNotContain(t *testing.T, resp *httptest.ResponseRecorder, values ...string) {
+	t.Helper()
+	body := resp.Body.String()
+	for _, value := range values {
+		if strings.Contains(body, value) {
+			t.Fatalf("body = %q, should not contain %q", body, value)
+		}
+	}
+}
+
+func assertLogContains(t *testing.T, logs *captureLogger, values ...string) {
+	t.Helper()
+	got := logs.String()
+	for _, value := range values {
+		if !strings.Contains(got, value) {
+			t.Fatalf("log = %q, want to contain %q", got, value)
+		}
 	}
 }

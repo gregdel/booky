@@ -7,6 +7,7 @@ import (
 	"html"
 	"io"
 	"io/fs"
+	"log"
 	"net/http"
 	"strings"
 
@@ -28,15 +29,27 @@ type Server struct {
 	assets     fs.FS
 	publicPath string
 	appTitle   string
+	logger     logger
+}
+
+type logger interface {
+	Printf(string, ...any)
 }
 
 func New(store Store, assets fs.FS, publicPath, appTitle string) http.Handler {
+	return newWithLogger(store, assets, publicPath, appTitle, log.Default())
+}
+
+func newWithLogger(store Store, assets fs.FS, publicPath, appTitle string, l logger) http.Handler {
 	publicPath = cleanPublicPath(publicPath)
 	appTitle = strings.TrimSpace(appTitle)
 	if appTitle == "" {
 		appTitle = "booky"
 	}
-	s := &Server{store: store, assets: assets, publicPath: publicPath, appTitle: appTitle}
+	if l == nil {
+		l = log.Default()
+	}
+	s := &Server{store: store, assets: assets, publicPath: publicPath, appTitle: appTitle, logger: l}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/health", s.handleHealth)
@@ -98,7 +111,7 @@ func (s *Server) handleAsset(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	index, err := fs.ReadFile(s.assets, "index.html")
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "index not found")
+		s.writeInternalError(w, "read index", err)
 		return
 	}
 
@@ -201,13 +214,13 @@ func (s *Server) listBookings(w http.ResponseWriter, r *http.Request) {
 		End:   q.Get("end"),
 	}
 	if err := rng.Validate(); err != nil {
-		writeMappedError(w, err)
+		writeClientError(w, err)
 		return
 	}
 
 	bookings, err := s.store.List(r.Context(), rng)
 	if err != nil {
-		writeMappedError(w, err)
+		s.writeStoreError(w, "list bookings", err)
 		return
 	}
 	if bookings == nil {
@@ -230,13 +243,13 @@ func (s *Server) createBooking(w http.ResponseWriter, r *http.Request) {
 		Note:  req.Note,
 	}
 	if err := b.Validate(); err != nil {
-		writeMappedError(w, err)
+		writeClientError(w, err)
 		return
 	}
 
 	created, err := s.store.Create(r.Context(), b)
 	if err != nil {
-		writeMappedError(w, err)
+		s.writeStoreError(w, "create booking", err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, created)
@@ -254,7 +267,7 @@ func (s *Server) updateBooking(w http.ResponseWriter, r *http.Request, uid strin
 	}
 	etag, err := booking.NormalizeETag(req.ETag)
 	if err != nil {
-		writeMappedError(w, err)
+		writeClientError(w, err)
 		return
 	}
 
@@ -267,13 +280,13 @@ func (s *Server) updateBooking(w http.ResponseWriter, r *http.Request, uid strin
 		Note:  req.Note,
 	}
 	if err := b.Validate(); err != nil {
-		writeMappedError(w, err)
+		writeClientError(w, err)
 		return
 	}
 
 	updated, err := s.store.Update(r.Context(), b)
 	if err != nil {
-		writeMappedError(w, err)
+		s.writeStoreError(w, "update booking", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, updated)
@@ -287,12 +300,12 @@ func (s *Server) deleteBooking(w http.ResponseWriter, r *http.Request, uid strin
 	}
 	etag, err := booking.NormalizeETag(req.ETag)
 	if err != nil {
-		writeMappedError(w, err)
+		writeClientError(w, err)
 		return
 	}
 
 	if err := s.store.Delete(r.Context(), booking.Booking{UID: uid, ETag: etag}); err != nil {
-		writeMappedError(w, err)
+		s.writeStoreError(w, "delete booking", err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -338,17 +351,27 @@ func writeDecodeError(w http.ResponseWriter, err error) {
 	writeError(w, http.StatusBadRequest, err.Error())
 }
 
-func writeMappedError(w http.ResponseWriter, err error) {
+func writeClientError(w http.ResponseWriter, err error) {
+	writeError(w, http.StatusBadRequest, err.Error())
+}
+
+func (s *Server) writeStoreError(w http.ResponseWriter, op string, err error) {
+	s.logger.Printf("%s failed: %v", op, err)
 	switch {
 	case errors.Is(err, caldav.ErrNotFound):
-		writeError(w, http.StatusNotFound, err.Error())
+		writeError(w, http.StatusNotFound, "not found")
 	case errors.Is(err, caldav.ErrConflict):
-		writeError(w, http.StatusConflict, err.Error())
+		writeError(w, http.StatusConflict, "booking conflict")
 	case errors.Is(err, caldav.ErrUpstream):
-		writeError(w, http.StatusBadGateway, err.Error())
+		writeError(w, http.StatusBadGateway, "calendar service unavailable")
 	default:
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeError(w, http.StatusInternalServerError, "internal server error")
 	}
+}
+
+func (s *Server) writeInternalError(w http.ResponseWriter, op string, err error) {
+	s.logger.Printf("%s failed: %v", op, err)
+	writeError(w, http.StatusInternalServerError, "internal server error")
 }
 
 func writeJSON(w http.ResponseWriter, status int, value any) {
