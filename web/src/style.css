@@ -390,14 +390,18 @@ textarea {
   }
 
   #calendar {
-    min-height: 560px;
+    min-height: 0;
     padding: 10px;
+  }
+
+  .fc .fc-toolbar.fc-header-toolbar {
+    margin-bottom: 10px;
   }
 
   .fc .fc-toolbar {
     align-items: stretch;
     flex-direction: column;
-    gap: 10px;
+    gap: 8px;
   }
 
   .fc .fc-toolbar-title {
@@ -418,12 +422,25 @@ textarea {
     padding: 5px 9px;
   }
 
+  .fc .fc-col-header-cell-cushion {
+    padding: 5px 3px;
+  }
+
+  .fc .fc-daygrid-day-frame {
+    min-height: 0;
+  }
+
   .fc .fc-daygrid-day-number {
     padding: 6px 6px 3px;
   }
 
   .fc .fc-daygrid-day-events {
-    margin-inline: 3px;
+    margin: 1px 3px 3px;
+  }
+
+  .fc .fc-daygrid-event {
+    margin-top: 2px;
+    padding: 0 3px;
   }
 
   .field-row,

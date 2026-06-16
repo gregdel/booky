@@ -30,6 +30,9 @@ const EVENT_PALETTE = [
 ] as const;
 const EVENT_TEXT_COLOR = "#ffffff";
 const LAST_DAY_ERROR = "Last day must be on or after start.";
+const MOBILE_CALENDAR_QUERY = "(max-width: 720px)";
+const MOBILE_CALENDAR_MIN_HEIGHT = 360;
+const MOBILE_CALENDAR_BOTTOM_GAP = 12;
 
 type BookingEvent = EventApi & {
   extendedProps: {
@@ -55,11 +58,16 @@ const noteInput = requireElement<HTMLTextAreaElement>("booking-note");
 
 let calendar: Calendar;
 let activeBooking: Booking | null = null;
+let requestCalendarSizingUpdate = () => {};
 
 document.addEventListener("DOMContentLoaded", () => {
-  calendar = new Calendar(requireElement<HTMLElement>("calendar"), {
+  const calendarEl = requireElement<HTMLElement>("calendar");
+  const mobileCalendarMedia = window.matchMedia(MOBILE_CALENDAR_QUERY);
+  const calendarHeight = calendarHeightOption(calendarEl, mobileCalendarMedia);
+
+  calendar = new Calendar(calendarEl, {
     initialView: "dayGridMonth",
-    height: "auto",
+    height: calendarHeight,
     firstDay: 1,
     selectable: true,
     editable: true,
@@ -93,9 +101,54 @@ document.addEventListener("DOMContentLoaded", () => {
     },
   });
 
+  requestCalendarSizingUpdate = bindCalendarSizing(calendarEl, mobileCalendarMedia, calendar, calendarHeight);
   calendar.render();
   bindControls();
 });
+
+function bindCalendarSizing(
+  calendarEl: HTMLElement,
+  media: MediaQueryList,
+  calendar: Calendar,
+  initialHeight: number | "auto",
+): () => void {
+  let calendarHeight = initialHeight;
+  let pendingFrame = 0;
+
+  const requestUpdate = () => {
+    if (pendingFrame !== 0) {
+      return;
+    }
+    pendingFrame = window.requestAnimationFrame(() => {
+      pendingFrame = 0;
+      const nextHeight = calendarHeightOption(calendarEl, media);
+      if (nextHeight !== calendarHeight) {
+        calendarHeight = nextHeight;
+        calendar.setOption("height", nextHeight);
+      }
+    });
+  };
+
+  window.addEventListener("resize", requestUpdate);
+  window.visualViewport?.addEventListener("resize", requestUpdate);
+  window.visualViewport?.addEventListener("scroll", requestUpdate);
+  media.addEventListener("change", requestUpdate);
+  requestUpdate();
+
+  return requestUpdate;
+}
+
+function calendarHeightOption(calendarEl: HTMLElement, media: MediaQueryList): number | "auto" {
+  if (!media.matches) {
+    return "auto";
+  }
+
+  const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
+  const availableHeight =
+    viewportHeight - calendarEl.getBoundingClientRect().top - MOBILE_CALENDAR_BOTTOM_GAP;
+
+  return Math.max(MOBILE_CALENDAR_MIN_HEIGHT, Math.floor(availableHeight));
+}
 
 function bindControls(): void {
   addButton.addEventListener("click", () => {
@@ -358,6 +411,7 @@ async function readJSON(response: Response): Promise<{ error?: string } & Record
 function setStatus(message: string, isError = false): void {
   statusEl.textContent = message;
   statusEl.dataset.state = isError ? "error" : "ok";
+  requestCalendarSizingUpdate();
 }
 
 function clearFormError(): void {
