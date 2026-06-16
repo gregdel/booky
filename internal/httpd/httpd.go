@@ -139,8 +139,8 @@ func (s *Server) handleManifest(w http.ResponseWriter, r *http.Request) {
 		"start_url":        startURL,
 		"scope":            startURL,
 		"display":          "standalone",
-		"theme_color":      "#4f6f8f",
-		"background_color": "#f6f4ef",
+		"theme_color":      "#174A63",
+		"background_color": "#F5F7F2",
 		"icons": []map[string]string{
 			{
 				"src":   publicPath + "/icon-192.png",

@@ -636,7 +636,7 @@ func assertManifest(t *testing.T, manifest webManifest, title, startURL, scope, 
 	if manifest.ID != startURL || manifest.StartURL != startURL || manifest.Scope != scope {
 		t.Fatalf("manifest navigation = %#v", manifest)
 	}
-	if manifest.Display != "standalone" || manifest.ThemeColor != "#4f6f8f" || manifest.BackgroundColor != "#f6f4ef" {
+	if manifest.Display != "standalone" || manifest.ThemeColor != "#174A63" || manifest.BackgroundColor != "#F5F7F2" {
 		t.Fatalf("manifest display = %#v", manifest)
 	}
 	if len(manifest.Icons) != 2 {

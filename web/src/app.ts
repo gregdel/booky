@@ -19,14 +19,14 @@ import {
 
 const API_BASE = `${scriptBasePath()}/api`;
 const EVENT_PALETTE = [
-  "#4f6f8f",
-  "#4f7b78",
-  "#5b6f50",
-  "#7a6348",
-  "#7a5a73",
-  "#646f9c",
-  "#8a5b48",
-  "#4f7460",
+  "#174A63",
+  "#1F6F6B",
+  "#2F6B4F",
+  "#7A5B2E",
+  "#A94838",
+  "#66518A",
+  "#59612F",
+  "#7A4D3D",
 ] as const;
 const EVENT_TEXT_COLOR = "#ffffff";
 const LAST_DAY_ERROR = "Last day must be on or after start.";

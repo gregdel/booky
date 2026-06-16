@@ -1,10 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1254 1254" width="1254" height="1254" role="img" aria-label="House calendar icon">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="180 180 894 894" width="1254" height="1254" role="img" aria-label="House calendar icon">
   <defs>
     <style>
-      .blue{fill:#416b98;stroke:#416b98;stroke-linecap:round;stroke-linejoin:round}
+      .mark{fill:#174A63;stroke:#174A63;stroke-linecap:round;stroke-linejoin:round}
     </style>
   </defs>
-  <g class="blue">
+  <rect x="180" y="180" width="894" height="894" fill="#F7EFE4"/>
+  <g class="mark">
     <!-- house outline -->
     <path d="M300 544 585 306c26-22 59-22 86 0l285 238" fill="none" stroke-width="82"/>
     <path d="M335 544v292c0 45 37 82 82 82h420c45 0 82-37 82-82V544" fill="none" stroke-width="82"/>
