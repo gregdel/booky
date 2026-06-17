@@ -16,6 +16,7 @@ import {
   updateBookingPayload,
   type Booking,
 } from "./bookings";
+import { calendarHeightOption, type CalendarHeight } from "./calendarSizing";
 
 const API_BASE = `${scriptBasePath()}/api`;
 const EVENT_PALETTE = [
@@ -63,7 +64,7 @@ let requestCalendarSizingUpdate = () => {};
 document.addEventListener("DOMContentLoaded", () => {
   const calendarEl = requireElement<HTMLElement>("calendar");
   const mobileCalendarMedia = window.matchMedia(MOBILE_CALENDAR_QUERY);
-  const calendarHeight = calendarHeightOption(calendarEl, mobileCalendarMedia);
+  const calendarHeight = currentCalendarHeightOption(calendarEl, mobileCalendarMedia);
 
   calendar = new Calendar(calendarEl, {
     initialView: "dayGridMonth",
@@ -110,7 +111,7 @@ function bindCalendarSizing(
   calendarEl: HTMLElement,
   media: MediaQueryList,
   calendar: Calendar,
-  initialHeight: number | "auto",
+  initialHeight: CalendarHeight,
 ): () => void {
   let calendarHeight = initialHeight;
   let pendingFrame = 0;
@@ -121,7 +122,7 @@ function bindCalendarSizing(
     }
     pendingFrame = window.requestAnimationFrame(() => {
       pendingFrame = 0;
-      const nextHeight = calendarHeightOption(calendarEl, media);
+      const nextHeight = currentCalendarHeightOption(calendarEl, media);
       if (nextHeight !== calendarHeight) {
         calendarHeight = nextHeight;
         calendar.setOption("height", nextHeight);
@@ -131,23 +132,21 @@ function bindCalendarSizing(
 
   window.addEventListener("resize", requestUpdate);
   window.visualViewport?.addEventListener("resize", requestUpdate);
-  window.visualViewport?.addEventListener("scroll", requestUpdate);
   media.addEventListener("change", requestUpdate);
   requestUpdate();
 
   return requestUpdate;
 }
 
-function calendarHeightOption(calendarEl: HTMLElement, media: MediaQueryList): number | "auto" {
-  if (!media.matches) {
-    return "auto";
-  }
-
-  const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
-  const availableHeight =
-    viewportHeight - calendarEl.getBoundingClientRect().top - MOBILE_CALENDAR_BOTTOM_GAP;
-
-  return Math.max(MOBILE_CALENDAR_MIN_HEIGHT, Math.floor(availableHeight));
+function currentCalendarHeightOption(calendarEl: HTMLElement, media: MediaQueryList): CalendarHeight {
+  return calendarHeightOption({
+    isMobile: media.matches,
+    viewportHeight: window.visualViewport?.height ?? window.innerHeight,
+    calendarViewportTop: calendarEl.getBoundingClientRect().top,
+    scrollY: window.scrollY,
+    minHeight: MOBILE_CALENDAR_MIN_HEIGHT,
+    bottomGap: MOBILE_CALENDAR_BOTTOM_GAP,
+  });
 }
 
 function bindControls(): void {
